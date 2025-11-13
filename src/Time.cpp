@@ -13,13 +13,13 @@
 
 #include "Time.hpp"
 
-Time::Time(const char* server, long gmtOffset, int daylightOffset)
-    : ntpServer(server), gmtOffsetSec(gmtOffset), daylightOffsetSec(daylightOffset) {}
+Time::Time(const char* server, const char* server1, long gmtOffset, int daylightOffset)
+    : ntpServer(server), ntpServer1(server1), gmtOffsetSec(gmtOffset), daylightOffsetSec(daylightOffset) {}
 
 bool Time::begin() {
     // Sincronização inicial via NTP
     
-    configTime(gmtOffsetSec, daylightOffsetSec, ntpServer);
+    configTime(gmtOffsetSec, daylightOffsetSec, ntpServer, ntpServer1);
     Serial.println("Aguardando hora NTP...");
     while (!getLocalTime(&timeinfo)) {
         Serial.print(".");

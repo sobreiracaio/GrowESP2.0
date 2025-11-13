@@ -6,6 +6,7 @@ class Time {
 
     private:
         const char* ntpServer;
+        const char* ntpServer1;
         long gmtOffsetSec;
         int daylightOffsetSec;
         struct tm timeinfo;
@@ -14,7 +15,7 @@ class Time {
         unsigned long syncInterval = 3600000; // 1 hora padrão em ms
 
     public:
-        Time(const char* server = "pool.ntp.org", long gmtOffset = 0, int daylightOffset = 0);
+        Time(const char* server = "pool.ntp.org", const char* server1 = "pool.ntp.br", long gmtOffset = 0, int daylightOffset = 0);
 
         bool begin();                  // Inicializa NTP e RTC interno
         bool update();                 // Atualiza struct tm do RTC
