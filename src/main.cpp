@@ -55,10 +55,14 @@ void initDrivers()
 
 void initClasses()
 {
+	button = new Button(); // ver como cria um array de buttons ja que sao 4
+	display = new Display(tft, firebase, rtc, update, wifi, button); //mudar update/led library pra update/led class, criar classe update/led
+	
+		//como isso vai rodar apenas uma vez o ponteiro nao vai atualizar portanto deve se criar setters para algumas classes para poder absorver outros ponteiros
+		// criar a classe display com setters para injetar as outras classes
 	wifi = new WifiManager(webServer, prefs, dnsServer, wifiClient, wifiClass, display, led);
 	rtc = new Time(display, "pool.ntp.org", "pool.ntp.br", -10800, 0);
 	firebase = new FBase(firebaseClient, API_KEY, DATABASE_URL, wifi->getEmail(), wifi->getPass(), wifiClientSecure, display, led);
-	display = new Display(tft, firebase, rtc, update, wifi, button); //mudar update library pra update class, criar classe update
 }
 
 
