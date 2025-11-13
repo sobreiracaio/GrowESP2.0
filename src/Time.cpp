@@ -13,8 +13,8 @@
 
 #include "Time.hpp"
 
-Time::Time(const char* server, const char* server1, long gmtOffset, int daylightOffset)
-    : ntpServer(server), ntpServer1(server1), gmtOffsetSec(gmtOffset), daylightOffsetSec(daylightOffset) {}
+Time::Time(Display **tft, const char* server, const char* server1, long gmtOffset, int daylightOffset)
+    : display(tft), ntpServer(server), ntpServer1(server1), gmtOffsetSec(gmtOffset), daylightOffsetSec(daylightOffset) {}
 
 bool Time::begin() {
     // Sincronização inicial via NTP
