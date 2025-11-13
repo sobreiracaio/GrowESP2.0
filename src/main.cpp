@@ -7,7 +7,7 @@
 #include "Display.hpp"
 #include "Button.hpp"
 
-
+//Libraries
 WiFiClass *wifiClass = NULL;
 WiFiClientSecure *wifiClientSecure = NULL;
 WiFiClient *wifiClient = NULL;
@@ -23,6 +23,8 @@ UpdateClass *update = NULL;
 TFT_eSPI *tft = NULL;
 CFastLED *led = NULL;
 
+
+//Classes
 WifiManager *wifi = NULL;
 Time *rtc = NULL;
 FBase *firebase = NULL;
@@ -39,11 +41,14 @@ Button *button = NULL;
 void initDrivers()
 {
 	wifiClass = new WiFiClass();
-    wifiClient = new WiFiClient();
 	wifiClientSecure = new WiFiClientSecure();
+    wifiClient = new WiFiClient();
+	httpClient = new HTTPClient();
     webServer = new WebServer(80);
-    prefs = new Preferences();
     dnsServer = new DNSServer();
+    prefs = new Preferences();
+	firebaseClient = new FirebaseClient();
+	update = new UpdateClass();
     tft = new TFT_eSPI();
     led = new CFastLED();
 }
