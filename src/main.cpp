@@ -55,10 +55,10 @@ void initDrivers()
 
 void initClasses()
 {
-	wifi = new WifiManager(&webServer, &prefs, &dnsServer, &wifiClient, &wifiClass, &display, &led);
-	rtc = new Time(&display, "pool.ntp.org", "pool.ntp.br", -10800, 0);
-	firebase = new FBase(&firebaseClient, API_KEY, DATABASE_URL, wifi->getEmail(), wifi->getPass(), &wifiClientSecure, &display, &led);
-	display = new Display(&tft, &firebase, &rtc, &update, &wifi, &button); //mudar update library pra update class, criar classe update
+	wifi = new WifiManager(webServer, prefs, dnsServer, wifiClient, wifiClass, display, led);
+	rtc = new Time(display, "pool.ntp.org", "pool.ntp.br", -10800, 0);
+	firebase = new FBase(firebaseClient, API_KEY, DATABASE_URL, wifi->getEmail(), wifi->getPass(), wifiClientSecure, display, led);
+	display = new Display(tft, firebase, rtc, update, wifi, button); //mudar update library pra update class, criar classe update
 }
 
 
