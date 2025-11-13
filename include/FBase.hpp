@@ -12,10 +12,10 @@ class FBase {
         String email;
         String password;
 
-        FirebaseClient **firebaseClient;
+        FirebaseClient *firebaseClient;
         UserAuth user_auth;
         FirebaseApp app;
-        WiFiClientSecure **clientSecure;
+        WiFiClientSecure *clientSecure;
         AsyncClientClass aClient;
         RealtimeDatabase Database;
 
@@ -23,8 +23,8 @@ class FBase {
 
         String receivedData;
 
-        Display **tft;
-        CFastLED **leds;
+        Display *tft;
+        CFastLED *leds;
 
              
 
@@ -32,6 +32,6 @@ class FBase {
 
     public:
 
-        FBase(FirebaseClient **firebase_client, const String& api, const String& db_url, const String& user_email, const String& user_password, WiFiClientSecure **client_secure, Display **display, CFastLED **led);
+        FBase(FirebaseClient *firebase_client, const String& api, const String& db_url, const String& user_email, const String& user_password, WiFiClientSecure *client_secure, Display *display, CFastLED *led);
 
 };

@@ -8,7 +8,7 @@ class Button {
     
     private:
 
-    Display **display;
+    Display *display;
     uint8_t pin;
 
     public:

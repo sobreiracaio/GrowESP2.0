@@ -12,17 +12,17 @@ class Button;
 class Display {
 
     private:
-        TFT_eSPI **display;
+        TFT_eSPI *display;
 
-        FBase **firebase;
-        Time **rtc;
-        UpdateClass **update;
-        WifiManager **wifi;
-        Button **btn;
+        FBase *firebase;
+        Time *rtc;
+        UpdateClass *update;
+        WifiManager *wifi;
+        Button *btn;
         
 
 
     public:
-        Display(TFT_eSPI **tft, FBase **fbase, Time **time, UpdateClass **ota, WifiManager **wifi_manager, Button **button);
+        Display(TFT_eSPI *tft, FBase *fbase, Time *time, UpdateClass *ota, WifiManager *wifi_manager, Button *button);
 
 };
