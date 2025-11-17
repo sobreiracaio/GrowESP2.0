@@ -6,6 +6,9 @@
 #include "FBase.hpp"
 #include "Display.hpp"
 #include "Button.hpp"
+#include "DataClass.hpp"
+#include "OTA.hpp"
+#include "Light.hpp"
 
 //Libraries
 WiFiClass *wifiClass = NULL;
@@ -30,8 +33,9 @@ Time *rtc = NULL;
 FBase *firebase = NULL;
 Display *display = NULL;
 Button *button = NULL;
-
-
+DataClass *data_class = NULL;
+OTA *ota = NULL;
+Light *light = NULL;
 
 
 
@@ -55,14 +59,23 @@ void initDrivers()
 
 void initClasses()
 {
+	light = new Light();
+	data_class = new DataClass();
 	button = new Button(); // ver como cria um array de buttons ja que sao 4
-	display = new Display(tft, firebase, rtc, update, wifi, button); //mudar update/led library pra update/led class, criar classe update/led
+	display = new Display(tft, nullptr, nullptr, nullptr, nullptr, button, data_class); //mudar update/led library pra update/led class, criar classe update/led
 	
-		//como isso vai rodar apenas uma vez o ponteiro nao vai atualizar portanto deve se criar setters para algumas classes para poder absorver outros ponteiros
-		// criar a classe display com setters para injetar as outras classes
+	//como isso vai rodar apenas uma vez o ponteiro nao vai atualizar portanto deve se criar setters para algumas classes para poder absorver outros ponteiros
+	// criar a classe display com setters para injetar as outras classes
 	wifi = new WifiManager(webServer, prefs, dnsServer, wifiClient, wifiClass, display, led);
 	rtc = new Time(display, "pool.ntp.org", "pool.ntp.br", -10800, 0);
 	firebase = new FBase(firebaseClient, API_KEY, DATABASE_URL, wifi->getEmail(), wifi->getPass(), wifiClientSecure, display, led);
+	ota = new OTA(display);
+
+	display->setFBase(firebase);
+	display->setTime(rtc);
+	display->setOTA(ota);
+	display->setWifi(wifi);
+
 }
 
 

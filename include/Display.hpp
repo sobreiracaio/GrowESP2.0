@@ -6,8 +6,9 @@
 class WifiManager;
 class Time;
 class FBase;
-
 class Button;
+class DataClass;
+class OTA;
 
 class Display {
 
@@ -16,13 +17,17 @@ class Display {
 
         FBase *firebase;
         Time *rtc;
-        UpdateClass *update;
+        OTA *ota;
         WifiManager *wifi;
         Button *btn;
+        DataClass *dataClass;
         
 
 
     public:
-        Display(TFT_eSPI *tft, FBase *fbase, Time *time, UpdateClass *ota, WifiManager *wifi_manager, Button *button);
-
+        Display(TFT_eSPI *tft, FBase *fbase, Time *time, OTA *OTA, WifiManager *wifi_manager, Button *button, DataClass *data_class);
+        void setFBase(FBase *fbase);
+        void setTime (Time *time);
+        void setOTA (OTA *OTA);
+        void setWifi (WifiManager *wifi_manager);
 };
