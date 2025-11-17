@@ -4,7 +4,7 @@
 #include "Predefinitions.hpp"
 
 #include <Arduino.h>
-#include <FastLED.h>
+
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>

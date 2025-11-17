@@ -1,6 +1,6 @@
 #pragma once
 
-#define LED_PIN 4 
+ 
 #define UART_TX 17
 #define UART_RX 16
 

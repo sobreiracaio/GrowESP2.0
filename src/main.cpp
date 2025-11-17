@@ -24,7 +24,7 @@ FirebaseClient *firebaseClient = NULL;
 
 UpdateClass *update = NULL;
 TFT_eSPI *tft = NULL;
-CFastLED *led = NULL;
+
 
 
 //Classes
@@ -54,7 +54,7 @@ void initDrivers()
 	firebaseClient = new FirebaseClient();
 	update = new UpdateClass();
     tft = new TFT_eSPI();
-    led = new CFastLED();
+   
 }
 
 void initClasses()
@@ -66,9 +66,9 @@ void initClasses()
 	
 	//como isso vai rodar apenas uma vez o ponteiro nao vai atualizar portanto deve se criar setters para algumas classes para poder absorver outros ponteiros
 	// criar a classe display com setters para injetar as outras classes
-	wifi = new WifiManager(webServer, prefs, dnsServer, wifiClient, wifiClass, display, led);
+	wifi = new WifiManager(webServer, prefs, dnsServer, wifiClient, wifiClass, display);
 	rtc = new Time(display, "pool.ntp.org", "pool.ntp.br", -10800, 0);
-	firebase = new FBase(firebaseClient, API_KEY, DATABASE_URL, wifi->getEmail(), wifi->getPass(), wifiClientSecure, display, led);
+	firebase = new FBase(firebaseClient, API_KEY, DATABASE_URL, wifi->getEmail(), wifi->getPass(), wifiClientSecure, display);
 	ota = new OTA(display);
 
 	display->setFBase(firebase);

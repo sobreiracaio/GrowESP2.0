@@ -20,11 +20,11 @@ class WifiManager {
 
 
         Display *display;
-        CFastLED *leds;
+     
 
     public:
         WifiManager(WebServer *web_server, Preferences *preferences, DNSServer *dns_server, WiFiClient *wifi_client, WiFiClass * wifi_class,
-                    Display *tft, CFastLED *led);
+                    Display *tft);
         
         String getEmail();
         String getPass();
