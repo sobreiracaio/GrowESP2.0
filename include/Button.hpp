@@ -20,6 +20,6 @@ class Button{
         Button(uint8_t pin_number);
         void init();
         uint8_t getPin();
-        bool read(int operation = -1, float upper_limit = 0, float lower_limit = 0, unsigned long holdTime = 0, float step = 1);
+        bool read(float *value, int operation = -1, float upper_limit = 0, float lower_limit = 0, unsigned long holdTime = 0, float step = 1);
         bool getState();
 };
