@@ -1,11 +1,111 @@
 #pragma once
 
 #include "Predefinitions.hpp"
+#include "Libraries.hpp"
+#include "Light.hpp"
 
 class DataClass {
-
+    
     private:
 
+        SemaphoreHandle_t dataMutex;
+
+        bool isRunning;
+
+        float temperature;
+        float targetTemp;
+        float tempTolerance;
+
+        float hum;
+        float targetHumid;
+        float humidTolerance;
+
+        float soilHum;
+        float targetSoil;
+        float soilTolerance;
+
+        
+        float pumpDuration;
+        float absorptionDelay;
+        
+        float dayTime[2];
+        float nightTime[2];
+
+        float WaterReserv;
+        float HumidReserv;
+
+        bool lightStatus;
+        bool pumpStatus;
+        bool coolerStatus;
+        bool heaterStatus;
+        bool humidStatus;
+        bool dehumidStatus;
+
     public:
+
         DataClass();
+        ~DataClass();
+
+
+        void setTemp(float temp);
+        void setTargetTemp(float target_temp);
+        void setTempTolerance(float temp_tol);
+
+        void setHumid(float humid);
+        void setTargetHumid(float target_hum);
+        void setHumidTolerance(float hum_tol);
+
+        void setSoil(float soil);
+        void setTargetSoil(float target_soil);
+        void setSoilTolerance(float soil_tol);
+
+        void setPumpDuration(float pump_duration);
+        void setAbsorptionDelay(float abs_delay);
+
+        void setDayTime(float h, float m, Light *light);
+        void setNightTime(float h, float m, Light *light);
+
+        void setWaterRes(float value);
+        void setHumidRes(float value);
+
+        void setLightStatus(bool status);
+        void setPumpStatus(bool status);
+        void setCoolerStatus(bool status);
+        void setHeaterStatus(bool status);
+        void setHumidStatus(bool status);
+        void setDehumidStatus(bool status);
+
+
+        float getTemp();
+        float getTargetTemp();
+        float getTempTolerance();
+        float getHumid();
+        float getTargetHumid();
+        float getHumidTolerance();
+        float getSoil();
+        float getTargetSoil();
+        float getSoilTolerance();
+        float getPumpDuration();
+        float getAbsorptionDelay();
+
+
+        void getDayTime(float *out);
+        void getNightTime(float *out);
+
+        float getWaterRes();
+        float getHumidRes();
+
+        float getLightStatus();
+        float getPumpStatus();
+        float getCoolerStatus();
+        float getHeaterStatus();
+        float getHumidStatus();
+        float getDehumidStatus();
+
+        void setIsRunning(bool stats);
+        bool getIsRunning();
+
+        bool lock(TickType_t timeout = portMAX_DELAY);
+        void unlock();
+
 };

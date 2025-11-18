@@ -32,7 +32,7 @@ WifiManager *wifi = NULL;
 Time *rtc = NULL;
 FBase *firebase = NULL;
 Display *display = NULL;
-Button *button = NULL;
+Button* button[4] = {NULL};
 DataClass *data_class = NULL;
 OTA *ota = NULL;
 Light *light = NULL;
@@ -61,11 +61,14 @@ void initClasses()
 {
 	light = new Light();
 	data_class = new DataClass();
-	button = new Button(); // ver como cria um array de buttons ja que sao 4
-	display = new Display(tft, nullptr, nullptr, nullptr, nullptr, button, data_class); //mudar update/led library pra update/led class, criar classe update/led
+
+	button[0] = new Button(BTN1);
+	button[1] = new Button(BTN2);
+	button[2] = new Button(BTN3);
+	button[3] = new Button(BTN4);
+
+	display = new Display(tft, nullptr, nullptr, nullptr, nullptr, *button, data_class); 
 	
-	//como isso vai rodar apenas uma vez o ponteiro nao vai atualizar portanto deve se criar setters para algumas classes para poder absorver outros ponteiros
-	// criar a classe display com setters para injetar as outras classes
 	wifi = new WifiManager(webServer, prefs, dnsServer, wifiClient, wifiClass, display);
 	rtc = new Time(display, "pool.ntp.org", "pool.ntp.br", -10800, 0);
 	firebase = new FBase(firebaseClient, API_KEY, DATABASE_URL, wifi->getEmail(), wifi->getPass(), wifiClientSecure, display);
