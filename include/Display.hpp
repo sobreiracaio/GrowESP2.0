@@ -1,6 +1,15 @@
 #pragma once
 
 #include "Libraries.hpp"
+#include "image.hpp"
+
+#define DARK_GREY 0x18e3
+#define BLACK     0x18a3  // 0x1E1E1E -> RGB(30,30,30)
+#define WHITE     0xe73c
+#define YELLOW    0xbc69  // 0xDDB967 -> RGB(221,185,103)
+#define BLUE      0x4c57  // 0x2176AE -> RGB(33,118,174)
+#define RED       0xba69  // 0xFF715B -> RGB(255,113,91)
+#define GREEN     0x4dea  // 0x1EA896 -> RGB(30,168,150)
 
 
 class WifiManager;
@@ -26,5 +35,11 @@ class Display {
 
     public:
         Display(TFT_eSPI *tft, FBase *fbase, Time *time, OTA *OTA, WifiManager *wifi_manager, Button **button, DataClass *data_class);
-
+        bool initDisplay();
+        void initLogoScreen();
+        void connectionScreen();
+        void qrScreen();
+        void mainScreen();
+        void adjustScreen();
+        void confScreen();
 };

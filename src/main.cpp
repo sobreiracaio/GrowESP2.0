@@ -77,6 +77,11 @@ void initClasses()
 	
 }
 
+void initModules()
+{
+	display->initDisplay();
+}
+
 
 
 
@@ -84,13 +89,17 @@ void setup()
 {
 	initDrivers();
 	initClasses();
+	initModules();
+	display->initLogoScreen();
 
+	display->connectionScreen();
+
+	//display->qrScreen();
 
 }
 
 void loop() 
 {
-
 
 
 }
