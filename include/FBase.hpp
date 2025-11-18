@@ -2,7 +2,7 @@
 
 #include "Libraries.hpp"
 
-class Display;
+
 
 class FBase {
 
@@ -23,7 +23,7 @@ class FBase {
 
         String receivedData;
 
-        Display *tft;
+        
         
 
              
@@ -32,6 +32,6 @@ class FBase {
 
     public:
 
-        FBase(FirebaseClient *firebase_client, const String& api, const String& db_url, const String& user_email, const String& user_password, WiFiClientSecure *client_secure, Display *display);
+        FBase(FirebaseClient *firebase_client, const String& api, const String& db_url, const String& user_email, const String& user_password, WiFiClientSecure *client_secure);
 
 };

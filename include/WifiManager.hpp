@@ -2,7 +2,7 @@
 
 #include "Libraries.hpp"
 
-class Display;
+
 
 class WifiManager {
 
@@ -18,13 +18,10 @@ class WifiManager {
         String email;
         String userpass;
 
-
-        Display *display;
-     
+    
 
     public:
-        WifiManager(WebServer *web_server, Preferences *preferences, DNSServer *dns_server, WiFiClient *wifi_client, WiFiClass * wifi_class,
-                    Display *tft);
+        WifiManager(WebServer *web_server, Preferences *preferences, DNSServer *dns_server, WiFiClient *wifi_client, WiFiClass * wifi_class);
         
         String getEmail();
         String getPass();

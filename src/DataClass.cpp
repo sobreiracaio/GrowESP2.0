@@ -1,6 +1,6 @@
 #include "DataClass.hpp"
 
-DataClass::DataClass()
+DataClass::DataClass(Light *light)
 {
 
     dataMutex = xSemaphoreCreateMutex();
@@ -40,6 +40,9 @@ DataClass::DataClass()
     dehumidStatus = false;
 
     isRunning = false;
+
+    this->light = light;
+
 }
 
 DataClass::~DataClass()
@@ -146,7 +149,7 @@ void DataClass::setAbsorptionDelay(float abs_delay)
     }
 }
 
-void DataClass::setDayTime(float h, float m, Light *light)
+void DataClass::setDayTime(float h, float m)
 {
     if (lock()) {
         dayTime[0] = h;
@@ -158,7 +161,7 @@ void DataClass::setDayTime(float h, float m, Light *light)
     }
 }
 
-void DataClass::setNightTime(float h, float m, Light *light)
+void DataClass::setNightTime(float h, float m)
 {
     if (lock()) {
         nightTime[0] = h;

@@ -19,13 +19,13 @@ class Display {
         Time *rtc;
         OTA *ota;
         WifiManager *wifi;
-        Button *btn;
+        Button **btn;
         DataClass *dataClass;
         
 
 
     public:
-        Display(TFT_eSPI *tft, FBase *fbase, Time *time, OTA *OTA, WifiManager *wifi_manager, Button *button, DataClass *data_class);
+        Display(TFT_eSPI *tft, FBase *fbase, Time *time, OTA *OTA, WifiManager *wifi_manager, Button **button, DataClass *data_class);
         void setFBase(FBase *fbase);
         void setTime (Time *time);
         void setOTA (OTA *OTA);

@@ -4,6 +4,8 @@
 #include "Libraries.hpp"
 #include "Light.hpp"
 
+class Light;
+
 class DataClass {
     
     private:
@@ -41,9 +43,11 @@ class DataClass {
         bool humidStatus;
         bool dehumidStatus;
 
+        Light *light;
+
     public:
 
-        DataClass();
+        DataClass(Light *light);
         ~DataClass();
 
 
@@ -62,8 +66,8 @@ class DataClass {
         void setPumpDuration(float pump_duration);
         void setAbsorptionDelay(float abs_delay);
 
-        void setDayTime(float h, float m, Light *light);
-        void setNightTime(float h, float m, Light *light);
+        void setDayTime(float h, float m);
+        void setNightTime(float h, float m);
 
         void setWaterRes(float value);
         void setHumidRes(float value);
