@@ -37,9 +37,11 @@ class Display {
         Display(TFT_eSPI *tft, FBase *fbase, Time *time, OTA *OTA, WifiManager *wifi_manager, Button **button, DataClass *data_class);
         bool initDisplay();
         void initLogoScreen();
-        void connectionScreen();
+        void connectionScreen(String note, String note1);
         void qrScreen();
         void mainScreen();
         void adjustScreen();
         void confScreen();
+
+        void flushScreen();
 };

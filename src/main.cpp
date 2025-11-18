@@ -68,12 +68,13 @@ void initClasses()
 	button[3] = new Button(BTN4);
 	
 	
-	wifi = new WifiManager(webServer, prefs, dnsServer, wifiClient, wifiClass);
+	wifi = new WifiManager(webServer, prefs, dnsServer, wifiClient, wifiClass, nullptr);
 	rtc = new Time("pool.ntp.org", "pool.ntp.br", -10800, 0);
 	firebase = new FBase(firebaseClient, API_KEY, DATABASE_URL, wifi->getEmail(), wifi->getPass(), wifiClientSecure);
 	ota = new OTA();
 	display = new Display(tft, firebase, rtc, ota, wifi, button, data_class); 
 	
+	wifi->injectDisplay(display);
 	
 }
 
@@ -92,9 +93,9 @@ void setup()
 	initModules();
 	display->initLogoScreen();
 
-	display->connectionScreen();
-
-	//display->qrScreen();
+	display->connectionScreen("Inicializando o dispositivo", "Aguarde...");
+	//wifi->handleReset();
+	wifi->wifiInit();
 
 }
 

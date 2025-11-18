@@ -1,8 +1,9 @@
 #pragma once
 
 #include "Libraries.hpp"
+#include "Display.hpp"
 
-
+class Display;
 
 class WifiManager {
 
@@ -12,6 +13,7 @@ class WifiManager {
         DNSServer *dnsServer;
         WiFiClient *wifiClient;
         WiFiClass *wifi;
+        Display *display;
 
         String ssid;
         String password;
@@ -21,8 +23,17 @@ class WifiManager {
     
 
     public:
-        WifiManager(WebServer *web_server, Preferences *preferences, DNSServer *dns_server, WiFiClient *wifi_client, WiFiClass * wifi_class);
-        
+        WifiManager(WebServer *web_server, Preferences *preferences, DNSServer *dns_server, WiFiClient *wifi_client, WiFiClass * wifi_class, Display *tft);
+        bool wifiInit();
+
+        void startPortal();
+        void handleRoot();
+        void handleSave();
+        void handleReset();
+
+        String generateNetWorkList();
         String getEmail();
         String getPass();
+
+        void injectDisplay(Display *tft);
 };

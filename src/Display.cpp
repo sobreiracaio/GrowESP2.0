@@ -23,8 +23,23 @@ void Display::initLogoScreen()
     display->fillScreen(BLACK);
 }
 
-void Display::connectionScreen()
+void Display::connectionScreen(String note, String note1)
 {
+    String label = "Inicializando...";
+    String foot = "Aguarde";
+    
+    int labelSize = display->textWidth(label, 4);
+    int footSize = display->textWidth(foot, 4);
+    int noteSize = display->textWidth(note, 2);
+    int note1Size = display->textWidth(note1, 2);
+
+    display->drawBitmap(150, 43, logoSmall, 180, 192, WHITE);
+ 
+    display->setTextColor(WHITE, BLACK);
+    display->drawString(label, (480 - labelSize) / 2, 20, 4);
+    display->drawString(foot, (480 - footSize) / 2, 230, 4);
+    display->drawString(note, (480 - noteSize) / 2, 260, 2);
+    display->drawString(note1, (480 - note1Size) / 2, 280, 2);
 
 }
 
@@ -50,4 +65,9 @@ void Display::adjustScreen()
 void Display::confScreen()
 {
 
+}
+
+void Display::flushScreen()
+{
+    display->fillScreen(BLACK);
 }
