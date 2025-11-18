@@ -67,18 +67,14 @@ void initClasses()
 	button[2] = new Button(BTN3);
 	button[3] = new Button(BTN4);
 	
-	display = new Display(tft, nullptr, nullptr, nullptr, nullptr, button, data_class); 
 	
 	wifi = new WifiManager(webServer, prefs, dnsServer, wifiClient, wifiClass);
 	rtc = new Time("pool.ntp.org", "pool.ntp.br", -10800, 0);
 	firebase = new FBase(firebaseClient, API_KEY, DATABASE_URL, wifi->getEmail(), wifi->getPass(), wifiClientSecure);
 	ota = new OTA();
-
-	display->setFBase(firebase);
-	display->setTime(rtc);
-	display->setOTA(ota);
-	display->setWifi(wifi);
-
+	display = new Display(tft, firebase, rtc, ota, wifi, button, data_class); 
+	
+	
 }
 
 

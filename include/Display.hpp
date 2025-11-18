@@ -26,8 +26,5 @@ class Display {
 
     public:
         Display(TFT_eSPI *tft, FBase *fbase, Time *time, OTA *OTA, WifiManager *wifi_manager, Button **button, DataClass *data_class);
-        void setFBase(FBase *fbase);
-        void setTime (Time *time);
-        void setOTA (OTA *OTA);
-        void setWifi (WifiManager *wifi_manager);
+
 };
