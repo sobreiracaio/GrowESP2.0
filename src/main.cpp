@@ -81,6 +81,12 @@ void initClasses()
 void initModules()
 {
 	display->initDisplay();
+	display->initLogoScreen();
+	wifi->wifiInit();
+	display->connectionScreen("Atualizando relogio", "Aguarde...");
+	rtc->begin();
+	display->flushScreen();
+
 }
 
 
@@ -91,16 +97,18 @@ void setup()
 	initDrivers();
 	initClasses();
 	initModules();
-	display->initLogoScreen();
+	
 
-	display->connectionScreen("Inicializando o dispositivo", "Aguarde...");
+
+	//display->connectionScreen("Inicializando o dispositivo", "Aguarde...");
 	//wifi->handleReset();
-	wifi->wifiInit();
+	//wifi->wifiInit();
 
 }
 
 void loop() 
 {
-
-
+	//display->mainScreen();
+	display->animateArrow(20, 20, 20, WHITE, LEFT);
+	display->animateArrow(60, 20, 10, WHITE, RIGHT);
 }

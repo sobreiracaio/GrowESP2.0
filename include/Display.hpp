@@ -2,6 +2,7 @@
 
 #include "Libraries.hpp"
 #include "image.hpp"
+#include "Time.hpp"
 
 #define DARK_GREY 0x18e3
 #define BLACK     0x18a3  // 0x1E1E1E -> RGB(30,30,30)
@@ -10,6 +11,9 @@
 #define BLUE      0x4c57  // 0x2176AE -> RGB(33,118,174)
 #define RED       0xba69  // 0xFF715B -> RGB(255,113,91)
 #define GREEN     0x4dea  // 0x1EA896 -> RGB(30,168,150)
+
+#define RIGHT 0
+#define LEFT 1
 
 
 class WifiManager;
@@ -31,9 +35,11 @@ class Display {
         Button **btn;
         DataClass *dataClass;
         
-
-
-    public:
+        void bottomScreen(String t1, String t2, String t3, String t4);
+        void topScreen(String label);
+        
+        
+        public:
         Display(TFT_eSPI *tft, FBase *fbase, Time *time, OTA *OTA, WifiManager *wifi_manager, Button **button, DataClass *data_class);
         bool initDisplay();
         void initLogoScreen();
@@ -42,6 +48,8 @@ class Display {
         void mainScreen();
         void adjustScreen();
         void confScreen();
-
+        
         void flushScreen();
+       
+        void animateArrow(int x, int y, int size, uint16_t color, int orientation);
 };
