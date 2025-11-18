@@ -38,7 +38,7 @@ OTA *ota = NULL;
 Light *light = NULL;
 
 
-
+struct tm now = {0};
 
 
 
