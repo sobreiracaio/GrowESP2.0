@@ -3,6 +3,8 @@
 #include "Libraries.hpp"
 #include "image.hpp"
 #include "Time.hpp"
+#include "Button.hpp"
+#include "DataClass.hpp"
 
 #define DARK_GREY 0x18e3
 #define BLACK     0x18a3  // 0x1E1E1E -> RGB(30,30,30)
@@ -14,6 +16,7 @@
 
 #define RIGHT 0
 #define LEFT 1
+#define BOTH -1
 
 
 class WifiManager;
@@ -36,9 +39,16 @@ class Display {
         DataClass *dataClass;
         
         void bottomScreen(String t1, String t2, String t3, String t4);
-        void topScreen(String label);
-        
-        
+        void topScreen(String label, int arrowSetup);
+        void animateArrow(int x, int y, int size, uint16_t color, int orientation);
+        void drawArc(int x, int y, float value, float targetValue, float ceiling_value, String label, String unit);
+        void actuatorDisplay();
+        String formatStatus(bool status);
+
+        float day[2];
+        float night[2];
+
+
         public:
         Display(TFT_eSPI *tft, FBase *fbase, Time *time, OTA *OTA, WifiManager *wifi_manager, Button **button, DataClass *data_class);
         bool initDisplay();
@@ -48,8 +58,9 @@ class Display {
         void mainScreen();
         void adjustScreen();
         void confScreen();
+
+        void menuSwitch(float *menu);
         
         void flushScreen();
        
-        void animateArrow(int x, int y, int size, uint16_t color, int orientation);
 };

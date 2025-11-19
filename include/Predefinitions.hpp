@@ -7,7 +7,10 @@
 #define API_KEY "AIzaSyBZOxkbUT3b9COdhCqNul3kNy6HEuSU5S4"
 #define DATABASE_URL "https://growstation-183df-default-rtdb.firebaseio.com"
 
-
+//BUTTON OPERATIONS
+#define DECREMENT 0
+#define INCREMENT 1
+#define CHANGE_STATE 2
 
 
 //OTHERS

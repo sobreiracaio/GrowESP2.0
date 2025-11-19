@@ -9,22 +9,22 @@ DataClass::DataClass(Light *light)
         Serial.println("Erro ao criar mutex do DataBuild!");
 
     temperature = 0;
-    targetTemp = 25;
+    targetTemp = 0;
     tempTolerance = 2;
 
     hum = 0;
-    targetHumid = 50;
+    targetHumid = 0;
     humidTolerance = 2;
 
     soilHum = 0;
-    targetSoil = 80;
+    targetSoil = 0;
     soilTolerance = 5;
 
         
     pumpDuration = 5;
     absorptionDelay = 30;
        
-    dayTime[0] = 12;
+    dayTime[0] = 0;
     dayTime[1] = 0;
     nightTime[0] = 0;
     nightTime[1] = 0;

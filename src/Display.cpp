@@ -1,7 +1,13 @@
 #include "Display.hpp"
 
 Display::Display(TFT_eSPI *tft, FBase *fbase, Time *time, OTA *ota, WifiManager *wifi_manager, Button **button, DataClass *data_class) :
-                    display(tft), firebase(fbase), rtc(time), ota(ota), wifi(wifi_manager), btn(button), dataClass(data_class){}
+                    display(tft), firebase(fbase), rtc(time), ota(ota), wifi(wifi_manager), btn(button), dataClass(data_class)
+                    {
+                        day[0] = 0;
+                        day[1] = 0;
+                        night[0] = 0;
+                        night[1] = 0;
+                    }
 
 bool Display::initDisplay()
 {
@@ -56,17 +62,70 @@ void Display::qrScreen()
 }
 void Display::mainScreen()
 {
-    topScreen("Painel Principal");
-    bottomScreen("-", "+", "OK", "Cancel");
+    
+    topScreen("Painel Principal", RIGHT);
+
+    display->setTextDatum(TL_DATUM);
+    drawArc(60 ,98, dataClass->getTemp(), dataClass->getTargetTemp(), 50, "Temperatura" , ".C");
+	drawArc(160 ,98, dataClass->getHumid(), dataClass->getTargetHumid(), 100, "Umidade" , "%");
+	drawArc(260 ,98, dataClass->getSoil(), dataClass->getTargetSoil(), 100, "Solo" , "%");
+    
+    actuatorDisplay();
+    bottomScreen(" ", ">", "Iniciar", " ");
 
 }
 void Display::adjustScreen()
 {
-
+    topScreen("Ajustes", BOTH);
+    bottomScreen("<", ">", "Ajustar", "Voltar");
 }
 void Display::confScreen()
 {
+    topScreen("Configuracao", LEFT);
+    bottomScreen("<", " ", "Configurar", "Voltar");
+}
 
+void Display::menuSwitch(float *menu)
+{
+    switch (int(*menu))
+    {
+        case 0:
+        {
+            mainScreen();
+            // if (btn[1]->read(menu, INCREMENT, 10, 0))
+            //     flushScreen();
+            break;
+        }
+
+        case 1:
+        {
+            adjustScreen();
+            // if(btn[0]->read(menu, DECREMENT, 10, 0))
+            //     flushScreen();
+            // if(btn[1]->read(menu, INCREMENT, 10, 0))
+            //     flushScreen();
+            // if(btn[3]->read(menu, DECREMENT, 10, 0))
+            //     flushScreen();
+            break;
+        }
+        
+        case 2:
+        {
+            confScreen();
+            // if(btn[0]->read(menu, DECREMENT, 10, 0))
+            //     flushScreen();
+            
+            // if(btn[3]->read(menu, DECREMENT, 10, 0))
+            //     flushScreen();
+            break;
+        }
+
+
+
+
+        default:
+            break;
+    }
 }
 
 void Display::flushScreen()
@@ -113,29 +172,43 @@ void Display::bottomScreen(String t1, String t2, String t3, String t4)
 
 }
 
-void Display::topScreen(String label)
+void Display::topScreen(String label, int arrowSetup)
 {
     const int height = display->fontHeight(2);
     const int textPos = (50 - height) / 2;
     const int sectionWidth = 440;
     const int textW = display->textWidth(label, 4);
     
-    
-	display->setTextDatum(MC_DATUM);
+    display->setTextDatum(MC_DATUM);
     display->setTextColor(WHITE, BLACK);
-    
-    
-    int xStart = (sectionWidth) / 2;
+
+    int xStart = sectionWidth / 2;
+    int leftTextX  = xStart - textW / 2;
+    int rightTextX = xStart + textW / 2;
+
     display->drawString(label, xStart, textPos, 4);
-    
 
+    // ----- LEFT -----
+    if (arrowSetup == LEFT || arrowSetup == BOTH)
+    {
+        int arrowX = leftTextX - 10 - 8;   // 8 = tamanho que você usa em animateArrow
+        animateArrow(arrowX, textPos, 6, WHITE, LEFT);
+    }
+
+    // ----- RIGHT -----
+    if (arrowSetup == RIGHT || arrowSetup == BOTH)
+    {
+        int arrowX = rightTextX + 10;
+        animateArrow(arrowX, textPos, 6, WHITE, RIGHT);
+    }
+
+    // ----- TIME -----
     String time = String(rtc->getHour()) + ":" + (rtc->getMinute() < 10 ? "0" + String(rtc->getMinute()) : String(rtc->getMinute()));
-    
     const int timeX = 440; 
-
     display->setTextColor(WHITE, BLACK);
     display->drawString(time, timeX, textPos, 4);
 }
+
 
 void Display::animateArrow(int x, int y, int size, uint16_t color, int orientation)
 {
@@ -196,3 +269,146 @@ void Display::animateArrow(int x, int y, int size, uint16_t color, int orientati
     }
     
 }
+
+uint16_t color565(uint8_t r, uint8_t g, uint8_t b) 
+{
+    return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
+}
+
+uint16_t getGradientColor(float angle) 
+{
+    angle = constrain(angle, 0, 270);
+    float t;
+    uint8_t r, g, b;
+
+    if(angle <= 135) 
+	{
+        // Azul -> Verde
+        t = angle / 135.0; // 0..1
+        r = 0;
+        g = t * 255;       // 0 -> 255
+        b = 255 - t * 255; // 255 -> 0
+    } else 
+	{
+        // Verde -> Vermelho
+        t = (angle - 135) / 135.0; // 0..1
+        r = t * 255;       // 0 -> 255
+        g = 255 - t * 255; // 255 -> 0
+        b = 0;
+    }
+
+    return color565(r, g, b);
+}
+
+
+void Display::drawArc(int x, int y, float value, float targetValue, float ceiling_value, String label, String unit)
+{
+	float angle = map(value, 0, ceiling_value, 0, 270);
+	float step = 2;
+	int radius = 43;
+
+	String fValue = value < 10 ? "0" + String(value, 1) : String(value, 1);
+	String fTarget = targetValue < 10 ? "0" + String(targetValue, 1) : String(targetValue, 1);
+
+	display->setTextColor(WHITE, BLACK);
+	display->setTextDatum(MC_DATUM);
+	display->drawString(fValue, x , y, 4);
+	display->drawString(fTarget, x , y + 15, 2);
+	display->drawString(unit, x + radius - 20, y + radius - 10, 4);
+	display->drawString(label, x , y + radius + 10, 2);
+
+
+
+	for (float a = 0; a <= angle;  a += step)
+	{
+		uint16_t color = getGradientColor(a);
+		display->drawArc(x, y, radius, 33 , a , a + step, color, BLACK);
+	}
+	
+	display->drawArc(x, y, radius, 33 , angle + 1 , 270, DARK_GREY, BLACK);
+}
+
+String fmtNumber(int n)
+{
+  if (n < 10)
+    return "0" + String(n);
+  return String(n);
+}
+
+void Display::actuatorDisplay()
+{
+    display->setTextColor(WHITE, BLACK);
+    dataClass->getDayTime(day);
+    dataClass->getNightTime(night);
+
+	// --- Monta período de luz ---
+	int dayH = (int)day[0];
+	int dayM = (int)day[1];
+	int nightH = (int)night[0];
+	int nightM = (int)night[1];
+
+// Função auxiliar para colocar zero à esquerda
+	display->setTextDatum(TL_DATUM);
+
+	String lightPeriod = fmtNumber(dayH) + ":" + fmtNumber(dayM) +
+                     " <-> " +
+                     fmtNumber(nightH) + ":" + fmtNumber(nightM);
+
+	// --- Labels ---
+	const char* labels[] = {
+	"Luz",
+	"Rega",
+	"Ventilador",
+	"Aquecedor",
+	"Umidificador",
+	"Desumidificador"
+	};
+
+	// --- Status correspondentes ---
+	bool statuses[6];
+	statuses[0] = dataClass->getLightStatus();
+	statuses[1] = dataClass->getPumpStatus();
+	statuses[2] = dataClass->getCoolerStatus();
+	statuses[3] = dataClass->getHeaterStatus();
+	statuses[4] = dataClass->getHumidStatus();
+	statuses[5] = dataClass->getDehumidStatus();
+
+	// --- Posições e layout ---
+	int baseXLabel = 325;
+	int baseXValue = 450;
+	int baseY = 86;
+	int lineSpacing = 30;
+
+	// --- Centraliza o período de luz ---
+	int lightPeriodW = display->textWidth(lightPeriod, 2);
+	display->setTextColor(WHITE, BLACK);
+	display->drawString(lightPeriod, 300 + (lightPeriodW / 2), 56, 2);
+
+	// --- Desenha todos os labels e status ---
+	for (int i = 0; i < 6; i++) 
+	{
+		int y = baseY + i * lineSpacing;
+		display->setTextColor(WHITE, BLACK);
+		display->drawString(labels[i], baseXLabel, y, 2);
+		display->drawString(formatStatus(statuses[i]), baseXValue, y, 2);
+	}
+	
+	
+}
+
+String Display::formatStatus(bool status)
+{
+	String temp = "";
+	if(!status)
+	{
+		display->setTextColor(RED, BLACK);
+		temp = "OFF";
+	}
+	else
+	{
+		display->setTextColor(GREEN, BLACK);
+		temp = "ON  ";
+	}
+	return temp;
+}
+
