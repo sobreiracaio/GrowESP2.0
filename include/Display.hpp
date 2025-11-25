@@ -5,6 +5,7 @@
 #include "Time.hpp"
 #include "Button.hpp"
 #include "DataClass.hpp"
+#include "OTA.hpp"
 
 #define DARK_GREY 0x18e3
 #define BLACK     0x18a3  // 0x1E1E1E -> RGB(30,30,30)
@@ -17,6 +18,7 @@
 #define RIGHT 0
 #define LEFT 1
 #define BOTH -1
+#define NONE -2
 
 
 class WifiManager;
@@ -41,9 +43,19 @@ class Display {
         void bottomScreen(String t1, String t2, String t3, String t4);
         void topScreen(String label, int arrowSetup);
         void animateArrow(int x, int y, int size, uint16_t color, int orientation);
-        void drawArc(int x, int y, float value, float targetValue, float ceiling_value, String label, String unit);
+        void drawArc(int x, int y, float value, float targetValue, float ceiling_value, float tolerance, String label, String unit, int option = 0);
+        void drawBar(int x, int y, int width, int height, float value, float targetValue, float ceiling_value, float tolerance, String label, String unit);
+        void labelText(int x, int y, int rectW, int recH, String label, int color);
+        void inText(int x, int y, String label);
+        void boxText(int x, int y, int rectW, int rectH, String label, int color);
         void actuatorDisplay();
         String formatStatus(bool status);
+
+        void drawMainTabs(int activeTab);
+        void drawWifiMenu(bool selected);
+        void drawUpdateMenu(int selectedOption, int highlightedDigit);
+        void drawVersionInput(int highlightedDigit);
+        void drawAboutMenu();
 
         float day[2];
         float night[2];

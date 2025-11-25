@@ -9,15 +9,15 @@ DataClass::DataClass(Light *light)
         Serial.println("Erro ao criar mutex do DataBuild!");
 
     temperature = 0;
-    targetTemp = 0;
+    targetTemp = 30;
     tempTolerance = 2;
 
     hum = 0;
-    targetHumid = 0;
+    targetHumid = 25;
     humidTolerance = 2;
 
     soilHum = 0;
-    targetSoil = 0;
+    targetSoil = 75;
     soilTolerance = 5;
 
         
@@ -31,6 +31,7 @@ DataClass::DataClass(Light *light)
 
     WaterReserv = 0;
     HumidReserv = 0;
+    ReservWarning = 20;
 
     lightStatus = false;
     pumpStatus = false;
@@ -185,6 +186,14 @@ void DataClass::setHumidRes(float value)
 {
     if (lock()) {
         HumidReserv = value;
+        unlock();
+    }
+}
+
+void DataClass::setReservWarning(float value)
+{
+    if (lock()) {
+        ReservWarning = value;
         unlock();
     }
 }
@@ -386,6 +395,16 @@ float DataClass::getHumidRes()
     float val = 0;
     if (lock()) {
         val = HumidReserv;
+        unlock();
+    }
+    return val;
+}
+
+float DataClass::getReservWarning()
+{
+    float val = 0;
+    if (lock()) {
+        val = ReservWarning;
         unlock();
     }
     return val;

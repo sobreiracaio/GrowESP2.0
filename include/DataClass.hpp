@@ -13,6 +13,7 @@ class DataClass {
         SemaphoreHandle_t dataMutex;
 
         bool isRunning;
+        
 
         float temperature;
         float targetTemp;
@@ -35,6 +36,8 @@ class DataClass {
 
         float WaterReserv;
         float HumidReserv;
+
+        float ReservWarning;
 
         bool lightStatus;
         bool pumpStatus;
@@ -71,6 +74,7 @@ class DataClass {
 
         void setWaterRes(float value);
         void setHumidRes(float value);
+        void setReservWarning(float value);
 
         void setLightStatus(bool status);
         void setPumpStatus(bool status);
@@ -98,6 +102,7 @@ class DataClass {
 
         float getWaterRes();
         float getHumidRes();
+        float getReservWarning();
 
         float getLightStatus();
         float getPumpStatus();

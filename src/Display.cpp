@@ -32,7 +32,7 @@ void Display::initLogoScreen()
 void Display::connectionScreen(String note, String note1)
 {
     String label = "Inicializando...";
-    String foot = "Aguarde";
+    String foot = "       Aguarde       ";
     
     int labelSize = display->textWidth(label, 4);
     int footSize = display->textWidth(foot, 4);
@@ -66,9 +66,11 @@ void Display::mainScreen()
     topScreen("Painel Principal", RIGHT);
 
     display->setTextDatum(TL_DATUM);
-    drawArc(60 ,98, dataClass->getTemp(), dataClass->getTargetTemp(), 50, "Temperatura" , ".C");
-	drawArc(160 ,98, dataClass->getHumid(), dataClass->getTargetHumid(), 100, "Umidade" , "%");
-	drawArc(260 ,98, dataClass->getSoil(), dataClass->getTargetSoil(), 100, "Solo" , "%");
+    drawArc(60 ,98, dataClass->getTemp(), dataClass->getTargetTemp(), 50, dataClass->getTempTolerance(), "Temperatura" , ".C", 1);
+	drawArc(160 ,98, dataClass->getHumid(), dataClass->getTargetHumid(), 100, dataClass->getHumidTolerance(), "Umidade" , "%");
+	drawArc(260 ,98, dataClass->getSoil(), dataClass->getTargetSoil(), 100, dataClass->getSoilTolerance(), "Solo" , "%");
+    drawBar(20, 170, 180, 15, dataClass->getWaterRes(), dataClass->getReservWarning(), 100, 2, "Reserv. Rega", "%");
+    drawBar(20, 218, 180, 15, dataClass->getHumidRes(), dataClass->getReservWarning(), 100, 2,  "Reserv. Umid.", "%");
     
     actuatorDisplay();
     bottomScreen(" ", ">", "Iniciar", " ");
@@ -76,13 +78,246 @@ void Display::mainScreen()
 }
 void Display::adjustScreen()
 {
-    topScreen("Ajustes", BOTH);
-    bottomScreen("<", ">", "Ajustar", "Voltar");
+    static float submenu = 1;
+    float value = 0;
+    
+
+    switch ((int)submenu)   
+    {
+    case 0:
+        topScreen("Ajustes", BOTH);
+        bottomScreen("<", ">", "Ajustar", "Voltar");
+        break;
+
+    case 1:
+        topScreen("Ajustes", NONE);
+        bottomScreen("-", "+", "    OK    ", "Voltar");
+        break;
+    
+    case 2:
+        topScreen("Ajustes", NONE);
+        bottomScreen("-", "+", "    OK    ", "Voltar");
+        break;
+        
+    case 3:
+        topScreen("Ajustes", NONE);
+        bottomScreen("-", "+", "    OK    ", "Voltar");
+        break;
+    
+    case 4:
+        topScreen("Ajustes", NONE);
+        bottomScreen("-", "+", "    OK    ", "Voltar");
+        break;
+        
+    case 5:
+        topScreen("Ajustes", NONE);
+        bottomScreen("-", "+", "    OK    ", "Voltar");
+        break;
+    
+    case 6:
+        topScreen("Ajustes", NONE);
+        bottomScreen("-", "+", "    OK    ", "Voltar");
+        break;
+    
+    case 7:
+        topScreen("Ajustes", NONE);
+        bottomScreen("-", "+", "    OK    ", "Voltar");
+        break;
+    
+    case 8:
+        topScreen("Ajustes", NONE);
+        bottomScreen("-", "+", "    OK    ", "Voltar");
+        break;
+    
+    case 9:
+        topScreen("Ajustes", NONE);
+        bottomScreen("-", "+", "    OK    ", "Voltar");
+        break;
+    
+    case 10:
+        topScreen("Ajustes", NONE);
+        bottomScreen("-", "+", "    OK    ", "Voltar");
+        break;
+    
+    case 11:
+        topScreen("Ajustes", NONE);
+        bottomScreen("-", "+", "    OK    ", "Voltar");
+        break;
+    
+    case 12:
+        topScreen("Ajustes", NONE);
+        bottomScreen("-", "+", "    OK    ", "Voltar");
+        break;
+    
+    default:
+        break;
+    }
+
+    // if (*menu != 1)
+	// 	submenu = 0;
+    
+    int textH = display->fontHeight(2) + 6;
+    
+    display->drawSmoothRoundRect(10, 47, 5, 3, 459, 218, DARK_GREY, DARK_GREY);
+    display->setTextColor(WHITE, BLACK);
+
+    // Mapeamento: qual seção está ativa e qual campo está destacado
+    // submenu: 0 = desabilitado, 1-4 = Fotoperiodo, 5-6 = Temperatura, 7-8 = Umidade, 9-12 = Rega
+    struct Section {
+        const char* label;
+        int x;
+        bool active;
+    };
+    
+    Section sections[4] = {
+        {"Fotoperiodo", 19, (submenu >= 1 && submenu <= 4)},
+        {"Temperatura", 129, (submenu >= 5 && submenu <= 6)},
+        {"Umidade", 239, (submenu >= 7 && submenu <= 8)},
+        {"Rega", 349, (submenu >= 9 && submenu <= 12)}
+    };
+
+    // Desenha Fotoperiodo
+    labelText(sections[0].x, 69, 109, 188, sections[0].label, 
+              sections[0].active ? BLUE : DARK_GREY);
+    inText(sections[0].x, 74, "Dia");
+    boxText(36, 109, 32, 32,
+        ((int)day[0] < 10 ? "0" + String((int)day[0]) : String((int)day[0])) + "h",
+        submenu == 1 ? YELLOW : DARK_GREY);
+    display->drawString(":", 74, 118, 2);
+    boxText(80, 109, 32, 32,
+        ((int)day[1] < 10 ? "0" + String((int)day[1]) : String((int)day[1])) + "m",
+        submenu == 2 ? YELLOW : DARK_GREY);
+
+    inText(sections[0].x, 160, "Noite");
+    boxText(36, 196, 32, 32,
+        ((int)night[0] < 10 ? "0" + String((int)night[0]) : String((int)night[0])) + "h",
+        submenu == 3 ? YELLOW : DARK_GREY);
+    display->drawString(":", 74, 204, 2);
+    boxText(80, 196, 32, 32,
+        ((int)night[1] < 10 ? "0" + String((int)night[1]) : String((int)night[1])) + "m",
+        submenu == 4 ? YELLOW : DARK_GREY);
+
+    // Desenha Temperatura
+    labelText(sections[1].x, 69, 109, 188, sections[1].label,
+              sections[1].active ? BLUE : DARK_GREY);
+    inText(sections[1].x, 74, "Temp. Alvo");
+    boxText(152, 109, 64, 32,
+        (dataClass->getTargetTemp() < 10 ? "0" + String(dataClass->getTargetTemp()) : String(dataClass->getTargetTemp())) + " .C",
+        submenu == 5 ? YELLOW : DARK_GREY);
+
+    inText(sections[1].x, 160, "Tolerancia");
+    boxText(152, 196, 64, 32,
+        (dataClass->getTempTolerance() < 10 ? "0" + String(dataClass->getTempTolerance()) : String(dataClass->getTempTolerance())) + " .C",
+        submenu == 6 ? YELLOW : DARK_GREY);
+
+    // Desenha Umidade
+    labelText(sections[2].x, 69, 109, 188, sections[2].label,
+              sections[2].active ? BLUE : DARK_GREY);
+    inText(sections[2].x, 74, "Umid. Alvo");
+    boxText(262, 109, 64, 32,
+        (dataClass->getTargetHumid() < 10 ? "0" + String(dataClass->getTargetHumid()) : String(dataClass->getTargetHumid())) + " %",
+        submenu == 7 ? YELLOW : DARK_GREY);
+
+    inText(sections[2].x, 160, "Tolerancia");
+    boxText(262, 196, 64, 32,
+        (dataClass->getHumidTolerance() < 10 ? "0" + String(dataClass->getHumidTolerance()) : String(dataClass->getHumidTolerance())) + " %",
+        submenu == 8 ? YELLOW : DARK_GREY);
+
+    // Desenha Rega
+    labelText(sections[3].x, 69, 109, 188, sections[3].label,
+              sections[3].active ? BLUE : DARK_GREY);
+    inText(sections[3].x, 74, "Solo Alvo");
+    boxText(372, 92, 64, textH,
+        ((int)dataClass->getTargetSoil() < 10 ? "0" + String((int)dataClass->getTargetSoil()) : String((int)dataClass->getTargetSoil())) + " %",
+        submenu == 9 ? YELLOW : DARK_GREY);
+
+    inText(sections[3].x, 116, "Duracao");
+    boxText(372, 136, 64, textH,
+        ((int)dataClass->getPumpDuration() < 10 ? "0" + String((int)dataClass->getPumpDuration()) : String((int)dataClass->getPumpDuration())) + " s",
+        submenu == 10 ? YELLOW : DARK_GREY);
+
+    inText(sections[3].x, 160, "Intervalo");
+    boxText(372, 180, 64, textH,
+        ((int)dataClass->getAbsorptionDelay() < 10 ? "0" + String((int)dataClass->getAbsorptionDelay()) : String((int)dataClass->getAbsorptionDelay())) + " s",
+        submenu == 11 ? YELLOW : DARK_GREY);
+
+    inText(sections[3].x, 204, "Tolerancia");
+    boxText(372, 224, 64, textH,
+        ((int)dataClass->getSoilTolerance() < 10 ? "0" + String((int)dataClass->getSoilTolerance()) : String((int)dataClass->getSoilTolerance())) + " %",
+        submenu == 12 ? YELLOW : DARK_GREY);
+
 }
 void Display::confScreen()
 {
-    topScreen("Configuracao", LEFT);
-    bottomScreen("<", " ", "Configurar", "Voltar");
+    static float submenu = 0;
+    
+    
+
+    switch (int(submenu))
+    {
+    case 0:
+        topScreen("Configuracao", LEFT);
+        drawMainTabs(0);
+        drawWifiMenu(false);
+        bottomScreen("<", " ", "Configurar", "Voltar");
+        break;
+    
+    case 1:
+        topScreen("Configuracao", NONE);
+        drawMainTabs(0);
+        drawWifiMenu(true);
+        bottomScreen("    ", "    ", "    OK    ", "Voltar");
+        break;
+
+    case 2:
+        topScreen("Configuracao", NONE);
+        drawMainTabs(1);
+        drawUpdateMenu(0, -1);
+        bottomScreen("  -  ", "  +  ", "Atualizar", "Voltar");
+        break;
+    
+    case 3:
+        topScreen("Configuracao", NONE);
+        drawMainTabs(1);
+        drawUpdateMenu(1, -1);
+        bottomScreen("  <  ", "  >  ", "    OK    ", "Voltar");
+        break;
+    
+    case 4:
+        topScreen("Configuracao", NONE);
+        drawMainTabs(1);
+        drawUpdateMenu(1, -1);
+        drawVersionInput(0);
+        bottomScreen("  -  ", "  +  ", "   Prox.   ", "Voltar");
+        break;
+    
+    case 5:
+        topScreen("Configuracao", NONE);
+        drawMainTabs(1);
+        drawUpdateMenu(1, -1);
+        drawVersionInput(1);
+        bottomScreen("  -  ", "  +  ", "   Prox.   ", "Voltar");
+        break;
+    
+    case 6:
+        topScreen("Configuracao", NONE);
+        drawMainTabs(1);
+        drawUpdateMenu(1, -1);
+        drawVersionInput(2);
+        bottomScreen("  -  ", "  +  ", "Atualizar", "Voltar");
+        break;
+    
+    case 7:
+        topScreen("Configuracao", NONE);
+        drawMainTabs(2);
+        drawAboutMenu();
+        bottomScreen(" < ", " > ", "            ", "Voltar");
+        break;
+    
+    
+    default:
+        break;
+    }
 }
 
 void Display::menuSwitch(float *menu)
@@ -93,7 +328,7 @@ void Display::menuSwitch(float *menu)
         {
             mainScreen();
             // if (btn[1]->read(menu, INCREMENT, 10, 0))
-            //     flushScreen();
+            //      flushScreen();
             break;
         }
 
@@ -275,35 +510,52 @@ uint16_t color565(uint8_t r, uint8_t g, uint8_t b)
     return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3);
 }
 
-uint16_t getGradientColor(float angle) 
+// Função auxiliar para interpolar entre duas cores
+uint16_t interpolateColor(uint16_t color1, uint16_t color2, float t) 
 {
-    angle = constrain(angle, 0, 270);
-    float t;
-    uint8_t r, g, b;
-
-    if(angle <= 135) 
-	{
-        // Azul -> Verde
-        t = angle / 135.0; // 0..1
-        r = 0;
-        g = t * 255;       // 0 -> 255
-        b = 255 - t * 255; // 255 -> 0
-    } else 
-	{
-        // Verde -> Vermelho
-        t = (angle - 135) / 135.0; // 0..1
-        r = t * 255;       // 0 -> 255
-        g = 255 - t * 255; // 255 -> 0
-        b = 0;
-    }
-
+    // Extrai RGB de color1 (RGB565)
+    uint8_t r1 = ((color1 >> 11) & 0x1F) * 255 / 31;
+    uint8_t g1 = ((color1 >> 5) & 0x3F) * 255 / 63;
+    uint8_t b1 = (color1 & 0x1F) * 255 / 31;
+    
+    // Extrai RGB de color2 (RGB565)
+    uint8_t r2 = ((color2 >> 11) & 0x1F) * 255 / 31;
+    uint8_t g2 = ((color2 >> 5) & 0x3F) * 255 / 63;
+    uint8_t b2 = (color2 & 0x1F) * 255 / 31;
+    
+    // Interpola cada canal
+    uint8_t r = r1 + (r2 - r1) * t;
+    uint8_t g = g1 + (g2 - g1) * t;
+    uint8_t b = b1 + (b2 - b1) * t;
+    
     return color565(r, g, b);
 }
 
+// Gradiente com 3 cores
+uint16_t getGradientColor(float angle, uint16_t c1 = RED, uint16_t c2 = YELLOW, uint16_t c3 = GREEN) 
+{
+    angle = constrain(angle, 0, 270);
+    
+    if (angle <= 135) 
+    {
+        // Primeiro terço: c1 -> c2
+        float t = angle / 135.0; // 0..1
+        return interpolateColor(c1, c2, t);
+    } 
+    else 
+    {
+        // Segundo terço: c2 -> c3
+        float t = (angle - 135) / 135.0; // 0..1
+        return interpolateColor(c2, c3, t);
+    }
+}
 
-void Display::drawArc(int x, int y, float value, float targetValue, float ceiling_value, String label, String unit)
+
+void Display::drawArc(int x, int y, float value, float targetValue, float ceiling_value, float tolerance, String label, String unit, int option)
 {
 	float angle = map(value, 0, ceiling_value, 0, 270);
+    float targetAngle1  = map(targetValue - tolerance, 0, ceiling_value, 0, 270);
+    float targetAngle2  = map(targetValue + tolerance, 0, ceiling_value, 0, 270);
 	float step = 2;
 	int radius = 43;
 
@@ -321,11 +573,68 @@ void Display::drawArc(int x, int y, float value, float targetValue, float ceilin
 
 	for (float a = 0; a <= angle;  a += step)
 	{
-		uint16_t color = getGradientColor(a);
-		display->drawArc(x, y, radius, 33 , a , a + step, color, BLACK);
+        uint16_t color = 0;
+        if (option == 1)
+            color = getGradientColor(a, BLUE, YELLOW, RED);
+        else
+		    color = getGradientColor(a);
+		display->drawArc(x, y, radius, 33 , a - 1 , a + step, color, BLACK);
 	}
 	
 	display->drawArc(x, y, radius, 33 , angle + 1 , 270, DARK_GREY, BLACK);
+    display->drawArc(x, y, radius + 5, 45, targetAngle1, targetAngle2, YELLOW, BLACK);
+}
+
+void Display::drawBar(int x, int y, int width, int height, float value, float targetValue, float ceiling_value, float tolerance, String label, String unit)
+{
+    // Mapeia o valor atual para a largura da barra
+    float measure = map(value, 0, ceiling_value, 0, width);
+    float targetPos = map(targetValue, 0, ceiling_value, 0, width);
+    float toleranceWidth = map(tolerance, 0, ceiling_value, 0, width);
+    
+    float step = 2;
+    
+    // Textos
+    display->setTextColor(WHITE, BLACK);
+    display->setTextDatum(TL_DATUM);
+    
+    String fValue = value < 10 ? "0" + String(value, 1) : String(value, 1);
+    String fTarget = targetValue < 10 ? "0" + String(targetValue, 1) : String(targetValue, 1);
+    
+    // Label abaixo da barra
+    display->drawString(label, x, y + height + 5, 2);
+    
+    // Valores (ajuste posição conforme necessário)
+    // display->drawString(fValue, width + 5, y + height + 5, 2);
+    
+    display->drawString(fValue + unit, width - 20, y + height + 5 , 2);
+    
+    // Desenha a barra com gradiente
+    for (float a = 0; a <= measure; a += step)
+    {
+        // Mapeia a posição atual para um ângulo (0-270) para usar o gradiente existente
+        float angle = map(a, 0, width, 0, 270);
+        uint16_t color = getGradientColor(angle);
+        
+        display->fillRect(x + a - 1, y, step, height, color);
+    }
+    
+    // Parte não preenchida (cinza escuro)
+    if (measure < width) {
+        display->fillRect(x + measure, y, width - measure - 2, height, DARK_GREY);
+    }
+    
+    // Desenha a faixa de tolerância (amarela) - como uma linha ou retângulo fino
+    float targetStart = targetPos - toleranceWidth;
+    float targetEnd = targetPos + toleranceWidth;
+    
+    // Garante que não sai dos limites
+    if (targetStart < 0) targetStart = 0;
+    if (targetEnd > width) targetEnd = width;
+    
+    // Desenha indicador de target (pode ser uma linha ou retângulo acima/abaixo da barra)
+    display->fillRect(x + targetStart, y - 3, targetEnd - targetStart, 2, YELLOW);
+    
 }
 
 String fmtNumber(int n)
@@ -412,3 +721,84 @@ String Display::formatStatus(bool status)
 	return temp;
 }
 
+void Display::labelText(int x, int y, int rectW, int rectH, String label, int color)
+{
+	int textWidth = display->textWidth(label, 2);
+    int textX = x + (rectW - textWidth) / 2;
+
+    display->drawSmoothRoundRect(x, y, 5, 3, rectW, rectH, color, color);
+    display->drawString(label, textX, 50, 2);
+}
+
+void Display::boxText(int x, int y, int rectW, int rectH, String label, int color)
+{
+	int font = 2;
+    int textWidth = display->textWidth(label, font);
+    int textHeight = display->fontHeight(font);
+
+    // Centraliza texto no retângulo
+    int textX = x + (rectW - textWidth) / 2;
+    int textY = y + (rectH - textHeight) / 2;
+
+    // Desenha o retângulo e o texto centralizado
+    display->drawSmoothRoundRect(x, y, 5, 3, rectW, rectH, color, color);
+    display->drawString(label, textX, textY, font);
+}
+
+void Display::inText(int x, int y, String label)
+{
+	int rectWidth = 109; 
+	int textWidth = display->textWidth(label, 2);
+	int textX = x + (rectWidth - textWidth) / 2;
+	display->drawString(label, textX, y, 2);
+
+
+}
+
+
+void Display::drawMainTabs(int activeTab)
+{
+    display->setTextDatum(TL_DATUM);
+    boxText(20, 60, 146, 40, "WiFi", activeTab == 0 ? BLUE : DARK_GREY);
+    boxText(166, 60, 146, 40, "Atualizacao", activeTab == 1 ? BLUE : DARK_GREY);
+    boxText(312, 60, 146, 40, "Sobre", activeTab == 2 ? BLUE : DARK_GREY);
+}
+
+void Display::drawWifiMenu(bool selected)
+{
+    boxText(160, 150, 160, 40, "Alterar Rede e Senha", selected ? YELLOW : DARK_GREY);
+    display->setTextDatum(MC_DATUM);
+    display->drawString("*O equipamento ira reinicializar!", 240, 212, 2);
+    display->setTextDatum(TL_DATUM);
+}
+
+void Display::drawUpdateMenu(int selectedOption, int highlightedDigit)
+{
+    boxText(80, 150, 160, 40, "Atualizar Sistema", selectedOption == 0 ? YELLOW : DARK_GREY);
+    boxText(240, 150, 160, 40, "Atualizar modulo", selectedOption == 1 ? YELLOW : DARK_GREY);
+}
+
+void Display::drawVersionInput(int highlightedDigit)
+{
+    String digit1 = String(ota->getDigit(1));
+    String digit2 = String(ota->getDigit(2));
+    String digit3 = String(ota->getDigit(3));
+    if (highlightedDigit < 0) return; // Não desenha se não houver seleção
+    
+    display->setTextDatum(MC_DATUM);
+    display->drawString("Digite a versao do seu modulo:", 240, 200, 2);
+    display->setTextDatum(TL_DATUM);
+    
+    boxText(165, 215, 40, 40, digit1, highlightedDigit == 0 ? GREEN : DARK_GREY);
+    boxText(215, 215, 40, 40, digit2, highlightedDigit == 1 ? GREEN : DARK_GREY);
+    boxText(265, 215, 40, 40, digit3, highlightedDigit == 2 ? GREEN : DARK_GREY);
+}
+
+void Display::drawAboutMenu()
+{
+    display->setTextDatum(MC_DATUM);
+    display->drawString("Growbox v1.0", 240, 130, 4);
+    display->drawString("Versao do modulo : 101", 240, 170, 2);
+    display->drawString("Instagram: @pagina", 240, 195, 2);
+    display->setTextDatum(TL_DATUM);
+}

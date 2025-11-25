@@ -40,7 +40,7 @@ Light *light = NULL;
 
 struct tm now = {0};
 
-float menu = 0;
+float menu = 2;
 
 void initDrivers()
 {
@@ -83,7 +83,7 @@ void initModules()
 	display->initDisplay();
 	display->initLogoScreen();
 	wifi->wifiInit();
-	display->connectionScreen("Atualizando relogio", "Aguarde...");
+	display->connectionScreen("Atualizando relogio", "     Aguarde...     ");
 	rtc->begin();
 	display->flushScreen();
 
@@ -111,11 +111,13 @@ void setup()
 
 void loop() 
 {
-	//Serial.println(menu);
+	Serial.println(menu);
+	
 	// Serial.printf("Button 0: %d\n",button[0]->getState());
 	// Serial.printf("Button 1: %d\n",button[1]->getState());
 	// Serial.printf("Button 2: %d\n",button[2]->getState());
 	// Serial.printf("Button 3: %d\n",button[3]->getState());
+	
 	display->menuSwitch(&menu);
 	
 }
