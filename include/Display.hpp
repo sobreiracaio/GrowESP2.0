@@ -47,7 +47,7 @@ class Display {
         void drawBar(int x, int y, int width, int height, float value, float targetValue, float ceiling_value, float tolerance, String label, String unit);
         void labelText(int x, int y, int rectW, int recH, String label, int color);
         void inText(int x, int y, String label);
-        void boxText(int x, int y, int rectW, int rectH, String label, int color);
+        void boxText(int x, int y, int rectW, int rectH, String label, int color, bool animate = false);
         void actuatorDisplay();
         String formatStatus(bool status);
 

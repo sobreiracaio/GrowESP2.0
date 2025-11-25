@@ -78,7 +78,7 @@ void Display::mainScreen()
 }
 void Display::adjustScreen()
 {
-    static float submenu = 1;
+    static float submenu = 0;
     float value = 0;
     
 
@@ -182,20 +182,20 @@ void Display::adjustScreen()
     inText(sections[0].x, 74, "Dia");
     boxText(36, 109, 32, 32,
         ((int)day[0] < 10 ? "0" + String((int)day[0]) : String((int)day[0])) + "h",
-        submenu == 1 ? YELLOW : DARK_GREY);
+        submenu == 1 ? YELLOW : DARK_GREY, submenu == 1 ? true : false);
     display->drawString(":", 74, 118, 2);
     boxText(80, 109, 32, 32,
         ((int)day[1] < 10 ? "0" + String((int)day[1]) : String((int)day[1])) + "m",
-        submenu == 2 ? YELLOW : DARK_GREY);
+        submenu == 2 ? YELLOW : DARK_GREY, submenu == 2 ? true : false);
 
     inText(sections[0].x, 160, "Noite");
     boxText(36, 196, 32, 32,
         ((int)night[0] < 10 ? "0" + String((int)night[0]) : String((int)night[0])) + "h",
-        submenu == 3 ? YELLOW : DARK_GREY);
+        submenu == 3 ? YELLOW : DARK_GREY, submenu == 3 ? true : false);
     display->drawString(":", 74, 204, 2);
     boxText(80, 196, 32, 32,
         ((int)night[1] < 10 ? "0" + String((int)night[1]) : String((int)night[1])) + "m",
-        submenu == 4 ? YELLOW : DARK_GREY);
+        submenu == 4 ? YELLOW : DARK_GREY, submenu == 4 ? true : false);
 
     // Desenha Temperatura
     labelText(sections[1].x, 69, 109, 188, sections[1].label,
@@ -203,12 +203,12 @@ void Display::adjustScreen()
     inText(sections[1].x, 74, "Temp. Alvo");
     boxText(152, 109, 64, 32,
         (dataClass->getTargetTemp() < 10 ? "0" + String(dataClass->getTargetTemp()) : String(dataClass->getTargetTemp())) + " .C",
-        submenu == 5 ? YELLOW : DARK_GREY);
+        submenu == 5 ? YELLOW : DARK_GREY, submenu == 5 ? true : false);
 
     inText(sections[1].x, 160, "Tolerancia");
     boxText(152, 196, 64, 32,
         (dataClass->getTempTolerance() < 10 ? "0" + String(dataClass->getTempTolerance()) : String(dataClass->getTempTolerance())) + " .C",
-        submenu == 6 ? YELLOW : DARK_GREY);
+        submenu == 6 ? YELLOW : DARK_GREY, submenu == 6 ? true : false);
 
     // Desenha Umidade
     labelText(sections[2].x, 69, 109, 188, sections[2].label,
@@ -216,12 +216,12 @@ void Display::adjustScreen()
     inText(sections[2].x, 74, "Umid. Alvo");
     boxText(262, 109, 64, 32,
         (dataClass->getTargetHumid() < 10 ? "0" + String(dataClass->getTargetHumid()) : String(dataClass->getTargetHumid())) + " %",
-        submenu == 7 ? YELLOW : DARK_GREY);
+        submenu == 7 ? YELLOW : DARK_GREY, submenu == 7 ? true : false);
 
     inText(sections[2].x, 160, "Tolerancia");
     boxText(262, 196, 64, 32,
         (dataClass->getHumidTolerance() < 10 ? "0" + String(dataClass->getHumidTolerance()) : String(dataClass->getHumidTolerance())) + " %",
-        submenu == 8 ? YELLOW : DARK_GREY);
+        submenu == 8 ? YELLOW : DARK_GREY, submenu == 8 ? true : false);
 
     // Desenha Rega
     labelText(sections[3].x, 69, 109, 188, sections[3].label,
@@ -229,22 +229,22 @@ void Display::adjustScreen()
     inText(sections[3].x, 74, "Solo Alvo");
     boxText(372, 92, 64, textH,
         ((int)dataClass->getTargetSoil() < 10 ? "0" + String((int)dataClass->getTargetSoil()) : String((int)dataClass->getTargetSoil())) + " %",
-        submenu == 9 ? YELLOW : DARK_GREY);
+        submenu == 9 ? YELLOW : DARK_GREY, submenu == 9 ? true : false);
 
     inText(sections[3].x, 116, "Duracao");
     boxText(372, 136, 64, textH,
         ((int)dataClass->getPumpDuration() < 10 ? "0" + String((int)dataClass->getPumpDuration()) : String((int)dataClass->getPumpDuration())) + " s",
-        submenu == 10 ? YELLOW : DARK_GREY);
+        submenu == 10 ? YELLOW : DARK_GREY, submenu == 10 ? true : false);
 
     inText(sections[3].x, 160, "Intervalo");
     boxText(372, 180, 64, textH,
         ((int)dataClass->getAbsorptionDelay() < 10 ? "0" + String((int)dataClass->getAbsorptionDelay()) : String((int)dataClass->getAbsorptionDelay())) + " s",
-        submenu == 11 ? YELLOW : DARK_GREY);
+        submenu == 11 ? YELLOW : DARK_GREY, submenu == 11 ? true : false);
 
     inText(sections[3].x, 204, "Tolerancia");
     boxText(372, 224, 64, textH,
         ((int)dataClass->getSoilTolerance() < 10 ? "0" + String((int)dataClass->getSoilTolerance()) : String((int)dataClass->getSoilTolerance())) + " %",
-        submenu == 12 ? YELLOW : DARK_GREY);
+        submenu == 12 ? YELLOW : DARK_GREY, submenu == 12 ? true : false);
 
 }
 void Display::confScreen()
@@ -730,9 +730,9 @@ void Display::labelText(int x, int y, int rectW, int rectH, String label, int co
     display->drawString(label, textX, 50, 2);
 }
 
-void Display::boxText(int x, int y, int rectW, int rectH, String label, int color)
+void Display::boxText(int x, int y, int rectW, int rectH, String label, int color, bool animate)
 {
-	int font = 2;
+    int font = 2;
     int textWidth = display->textWidth(label, font);
     int textHeight = display->fontHeight(font);
 
@@ -740,8 +740,56 @@ void Display::boxText(int x, int y, int rectW, int rectH, String label, int colo
     int textX = x + (rectW - textWidth) / 2;
     int textY = y + (rectH - textHeight) / 2;
 
+    uint16_t finalColor = color;
+
+    if (animate) 
+    {
+        static unsigned long lastTime = 0;
+        static int brightness = 0;
+        static int direction = 1; // 1 = fade in, -1 = fade out
+
+        unsigned long now = millis();
+
+        // Velocidade da animação (ms entre frames)
+        if (now - lastTime >= 20)
+        {
+            lastTime = now;
+
+            brightness += direction * 10;
+
+            if (brightness >= 255) {
+                brightness = 255;
+                direction = -1;
+            }
+            else if (brightness <= 0) {
+                brightness = 0;
+                direction = 1;
+            }
+        }
+
+        // Converte DARK_GREY (cor mínima) de RGB565 para RGB
+        uint8_t r_dark = ((DARK_GREY >> 11) & 0x1F) * 255 / 31;
+        uint8_t g_dark = ((DARK_GREY >> 5) & 0x3F) * 255 / 63;
+        uint8_t b_dark = (DARK_GREY & 0x1F) * 255 / 31;
+
+        // Converte color (cor máxima) de RGB565 para RGB
+        uint8_t r_bright = ((color >> 11) & 0x1F) * 255 / 31;
+        uint8_t g_bright = ((color >> 5) & 0x3F) * 255 / 63;
+        uint8_t b_bright = (color & 0x1F) * 255 / 31;
+
+        // Interpola entre DARK_GREY e color baseado no brightness (0..255)
+        float t = brightness / 255.0; // Normaliza para 0..1
+        uint8_t r = r_dark + (r_bright - r_dark) * t;
+        uint8_t g = g_dark + (g_bright - g_dark) * t;
+        uint8_t b = b_dark + (b_bright - b_dark) * t;
+
+        finalColor = color565(r, g, b);
+    }
+
     // Desenha o retângulo e o texto centralizado
-    display->drawSmoothRoundRect(x, y, 5, 3, rectW, rectH, color, color);
+    display->setTextDatum(TL_DATUM);
+    display->drawSmoothRoundRect(x, y, 5, 3, rectW, rectH, finalColor, finalColor);
+    display->setTextColor(WHITE, BLACK);
     display->drawString(label, textX, textY, font);
 }
 
@@ -789,9 +837,9 @@ void Display::drawVersionInput(int highlightedDigit)
     display->drawString("Digite a versao do seu modulo:", 240, 200, 2);
     display->setTextDatum(TL_DATUM);
     
-    boxText(165, 215, 40, 40, digit1, highlightedDigit == 0 ? GREEN : DARK_GREY);
-    boxText(215, 215, 40, 40, digit2, highlightedDigit == 1 ? GREEN : DARK_GREY);
-    boxText(265, 215, 40, 40, digit3, highlightedDigit == 2 ? GREEN : DARK_GREY);
+    boxText(165, 215, 40, 40, digit1, highlightedDigit == 0 ? GREEN : DARK_GREY, highlightedDigit == 0 ? true : false);
+    boxText(215, 215, 40, 40, digit2, highlightedDigit == 1 ? GREEN : DARK_GREY, highlightedDigit == 1 ? true : false);
+    boxText(265, 215, 40, 40, digit3, highlightedDigit == 2 ? GREEN : DARK_GREY, highlightedDigit == 2 ? true : false);
 }
 
 void Display::drawAboutMenu()

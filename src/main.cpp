@@ -40,7 +40,7 @@ Light *light = NULL;
 
 struct tm now = {0};
 
-float menu = 2;
+float menu = 0;
 
 void initDrivers()
 {
@@ -71,7 +71,7 @@ void initClasses()
 	wifi = new WifiManager(webServer, prefs, dnsServer, wifiClient, wifiClass, nullptr);
 	rtc = new Time("pool.ntp.org", "pool.ntp.br", -10800, 0);
 	firebase = new FBase(firebaseClient, API_KEY, DATABASE_URL, wifi->getEmail(), wifi->getPass(), wifiClientSecure);
-	ota = new OTA();
+	ota = new OTA(prefs);
 	display = new Display(tft, firebase, rtc, ota, wifi, button, data_class); 
 	
 	wifi->injectDisplay(display);

@@ -1,11 +1,12 @@
 #include "OTA.hpp"
 
-OTA::OTA()
+OTA::OTA(Preferences *prefs) : prefs(prefs)
 {
     serialNum = 0;
     digit1 = 0;
     digit2 = 0;
     digit3 = 0;
+    
     //firmwareUrl = "";
 }
 
