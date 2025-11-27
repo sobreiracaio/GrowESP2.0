@@ -650,17 +650,29 @@ void Display::topScreen(String label, int arrowSetup, int color)
 
     
     // ----- LEFT -----
-    if (arrowSetup == LEFT || arrowSetup == BOTH)
+    if (arrowSetup == LEFT)
     {
-        int arrowX = leftTextX - 10 - 8;   // 8 = tamanho que você usa em animateArrow
-        animateArrow(arrowX, textPos, 6, color, LEFT);
+        int arrowL = leftTextX - 10 - 8;   // 8 = tamanho que você usa em animateArrow
+        int arrowR = rightTextX + 10;
+        animateArrow(arrowL, textPos, 6, color, LEFT);
+        animateArrow(arrowR, textPos, 6, BLACK, RIGHT);
     }
 
     // ----- RIGHT -----
-    if (arrowSetup == RIGHT || arrowSetup == BOTH)
+    if (arrowSetup == RIGHT)
     {
-        int arrowX = rightTextX + 10;
-        animateArrow(arrowX, textPos, 6, color, RIGHT);
+        int arrowL = leftTextX - 10 - 8;   // 8 = tamanho que você usa em animateArrow
+        int arrowR = rightTextX + 10;
+        animateArrow(arrowL, textPos, 6, BLACK, LEFT);
+        animateArrow(arrowR, textPos, 6, color, RIGHT);
+    }
+
+    if(arrowSetup == BOTH)
+    {
+        int arrowL = leftTextX - 10 - 8;   // 8 = tamanho que você usa em animateArrow
+        int arrowR = rightTextX + 10;
+        animateArrow(arrowL, textPos, 6, color, LEFT);
+        animateArrow(arrowR, textPos, 6, color, RIGHT);
     }
 
        // ----- TIME -----
