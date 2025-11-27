@@ -360,10 +360,7 @@ void Display::confScreen(float *menu)
     static float lastSubmenu = -1;
     
 
-    // if(lastSubmenu != submenu)
-    // {
-    //     submenu = 0;
-    // }
+    
 
     
         
@@ -376,7 +373,7 @@ void Display::confScreen(float *menu)
                 display->fillRect(0, 70, 480, 200, BLACK);
                 lastSubmenu = submenu;
             }
-            topScreen("Configuracao", RIGHT);
+            topScreen("Configuracao", LEFT);
             drawMainTabs(0);
             drawWifiMenu(false);
 
@@ -542,7 +539,8 @@ void Display::confScreen(float *menu)
 
             btn[0]->read(&submenu, DECREMENT, 8, 0, 0, 6);
 
-            btn[3]->read(menu, DECREMENT, 10, 0, 0);
+            if(btn[3]->read(menu, DECREMENT, 10, 0, 0))
+                submenu = 0;
 
             bottomScreen(" < ", "   ", "                 ", "Voltar");
             break;
