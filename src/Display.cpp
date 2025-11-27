@@ -60,9 +60,11 @@ void Display::qrScreen()
     display->drawSmoothRoundRect(220, 40, 5, 3, 240, 240, DARK_GREY, DARK_GREY);
     display->drawBitmap(230, 50, wifiqr, 220, 220, WHITE);
 }
-void Display::mainScreen()
+void Display::mainScreen(float *menu)
 {
-    
+    if (*menu != 0)
+        flushScreen();
+
     topScreen("Painel Principal", RIGHT);
 
     display->setTextDatum(TL_DATUM);
@@ -73,88 +75,192 @@ void Display::mainScreen()
     drawBar(20, 218, 180, 15, dataClass->getHumidRes(), dataClass->getReservWarning(), 100, 2,  "Reserv. Umid.", "%");
     
     actuatorDisplay();
+
+    if (btn[1]->read(menu, INCREMENT, 10, 0))
+                flushScreen();
+
     bottomScreen(" ", ">", "Iniciar", " ");
 
 }
-void Display::adjustScreen()
+void Display::adjustScreen(float *menu)
 {
     static float submenu = 0;
     float value = 0;
     
-
     switch ((int)submenu)   
     {
     case 0:
         topScreen("Ajustes", BOTH);
+        btn[0]->read(menu, DECREMENT, 10, 0);
+        btn[1]->read(menu, INCREMENT, 10, 0);
+        btn[2]->read(&submenu, INCREMENT, 12, 0);
+        btn[3]->read(menu, DECREMENT, 10, 0);
         bottomScreen("<", ">", "Ajustar", "Voltar");
         break;
 
     case 1:
-        topScreen("Ajustes", NONE);
+    {
+        topScreen("Ajustes", BOTH, BLACK);
+        btn[0]->read(&day[0], DECREMENT, 23, 0);
+        btn[1]->read(&day[0], INCREMENT, 23, 0);
+        btn[2]->read(&submenu, INCREMENT, 12, 0);
+        btn[3]->read(&submenu, DECREMENT, 12, 0);
+        dataClass->setDayTime(day[0], day[1]);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
+    }
     
     case 2:
-        topScreen("Ajustes", NONE);
+    {
+        topScreen("Ajustes", BOTH, BLACK);
+        btn[0]->read(&day[1], DECREMENT, 59, 0);
+        btn[1]->read(&day[1], INCREMENT, 59, 0);
+        btn[2]->read(&submenu, INCREMENT, 12, 0);
+        btn[3]->read(&submenu, DECREMENT, 12, 0);
+        dataClass->setDayTime(day[0], day[1]);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
+    }
         
     case 3:
-        topScreen("Ajustes", NONE);
+        topScreen("Ajustes", BOTH, BLACK);
+        btn[0]->read(&night[0], DECREMENT, 23, 0);
+        btn[1]->read(&night[0], INCREMENT, 23, 0);
+        btn[2]->read(&submenu, INCREMENT, 12, 0);
+        btn[3]->read(&submenu, DECREMENT, 12, 0);
+        dataClass->setNightTime(night[0], night[1]);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     
     case 4:
-        topScreen("Ajustes", NONE);
+        topScreen("Ajustes", BOTH, BLACK);
+        btn[0]->read(&night[1], DECREMENT, 59, 0);
+        btn[1]->read(&night[1], INCREMENT, 59, 0);
+        btn[2]->read(&submenu, INCREMENT, 12, 0);
+        btn[3]->read(&submenu, DECREMENT, 12, 0);
+        dataClass->setNightTime(night[0], night[1]);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
         
     case 5:
-        topScreen("Ajustes", NONE);
+    {
+        topScreen("Ajustes", BOTH, BLACK);
+        
+        value = dataClass->getTargetTemp();
+        btn[0]->read(&value, DECREMENT, 50, 0, 0, 0.5);
+        btn[1]->read(&value, INCREMENT, 50, 0, 0, 0.5);
+        
+        dataClass->setTargetTemp(value);
+        
+        btn[2]->read(&submenu, INCREMENT, 12, 0);
+        btn[3]->read(&submenu, DECREMENT, 12, 0);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
+    }
     
     case 6:
-        topScreen("Ajustes", NONE);
+    {
+        topScreen("Ajustes", BOTH, BLACK);
+        value = dataClass->getTempTolerance();
+        btn[0]->read(&value, DECREMENT, 10, 0, 0, 0.5);
+        btn[1]->read(&value, INCREMENT, 10, 0, 0, 0.5);
+
+        dataClass->setTempTolerance(value);
+
+        btn[2]->read(&submenu, INCREMENT, 12, 0);
+        btn[3]->read(&submenu, DECREMENT, 12, 0);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
+    }
     
     case 7:
-        topScreen("Ajustes", NONE);
+    {
+        topScreen("Ajustes", BOTH, BLACK);
+        value = dataClass->getTargetHumid();
+        btn[0]->read(&value, DECREMENT, 100, 0, 0, 0.5);
+        btn[1]->read(&value, INCREMENT, 100, 0, 0, 0.5);
+
+        dataClass->setTargetHumid(value);
+
+
+        btn[2]->read(&submenu, INCREMENT, 12, 0);
+        btn[3]->read(&submenu, DECREMENT, 12, 0);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
-    
+    }
     case 8:
-        topScreen("Ajustes", NONE);
+    {
+        topScreen("Ajustes", BOTH, BLACK);
+        value = dataClass->getHumidTolerance();
+        btn[0]->read(&value, DECREMENT, 10, 0, 0, 0.5);
+        btn[1]->read(&value, INCREMENT, 10, 0, 0, 0.5);
+
+        dataClass->setHumidTolerance(value);
+
+        btn[2]->read(&submenu, INCREMENT, 12, 0);
+        btn[3]->read(&submenu, DECREMENT, 12, 0);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
-    
+    }
     case 9:
-        topScreen("Ajustes", NONE);
+    {
+        topScreen("Ajustes", BOTH, BLACK);
+        value = dataClass->getTargetSoil();
+        btn[0]->read(&value, DECREMENT, 100, 0, 0, 0.5);
+        btn[1]->read(&value, INCREMENT, 100, 0, 0, 0.5);
+
+        dataClass->setTargetSoil(value);
+
+        btn[2]->read(&submenu, INCREMENT, 12, 0);
+        btn[3]->read(&submenu, DECREMENT, 12, 0);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
-    
+    }
     case 10:
-        topScreen("Ajustes", NONE);
+    {
+        topScreen("Ajustes", BOTH, BLACK);
+        value = dataClass->getPumpDuration();
+        btn[0]->read(&value, DECREMENT, 120, 0, 0, 5);
+        btn[1]->read(&value, INCREMENT, 120, 0, 0, 5);
+
+        dataClass->setPumpDuration(value);
+
+        btn[2]->read(&submenu, INCREMENT, 12, 0);
+        btn[3]->read(&submenu, DECREMENT, 12, 0);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
-    
+    }
     case 11:
-        topScreen("Ajustes", NONE);
+    {
+        topScreen("Ajustes", BOTH, BLACK);
+        value = dataClass->getAbsorptionDelay();
+        btn[0]->read(&value, DECREMENT, 240, 0, 0, 5);
+        btn[1]->read(&value, INCREMENT, 240, 0, 0, 5);
+
+        dataClass->setAbsorptionDelay(value);
+
+        btn[2]->read(&submenu, INCREMENT, 12, 0);
+        btn[3]->read(&submenu, DECREMENT, 12, 0);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
-    
+    }
     case 12:
-        topScreen("Ajustes", NONE);
+    {
+        topScreen("Ajustes", BOTH, BLACK);
+        value = dataClass->getSoilTolerance();
+        btn[0]->read(&value, DECREMENT, 20, 0);
+        btn[1]->read(&value, INCREMENT, 20, 0);
+
+        dataClass->setSoilTolerance(value);
+
+        btn[2]->read(menu, DECREMENT, 10, 0);
+        btn[3]->read(&submenu, DECREMENT, 12, 0);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
-    
+    }
     default:
         break;
     }
-
-    // if (*menu != 1)
-	// 	submenu = 0;
     
     int textH = display->fontHeight(2) + 6;
     
@@ -247,117 +353,236 @@ void Display::adjustScreen()
         submenu == 12 ? YELLOW : DARK_GREY, submenu == 12 ? true : false);
 
 }
-void Display::confScreen()
+void Display::confScreen(float *menu)
 {
     static float submenu = 0;
+    float dummy_value = 0;
+    static float lastSubmenu = -1;
     
+
+    // if(lastSubmenu != submenu)
+    // {
+    //     submenu = 0;
+    // }
+
     
+        
 
     switch (int(submenu))
     {
-    case 0:
-        topScreen("Configuracao", LEFT);
-        drawMainTabs(0);
-        drawWifiMenu(false);
-        bottomScreen("<", " ", "Configurar", "Voltar");
-        break;
-    
-    case 1:
-        topScreen("Configuracao", NONE);
-        drawMainTabs(0);
-        drawWifiMenu(true);
-        bottomScreen("    ", "    ", "    OK    ", "Voltar");
-        break;
+        case 0:
+            if(lastSubmenu != submenu)
+            {
+                display->fillRect(0, 70, 480, 200, BLACK);
+                lastSubmenu = submenu;
+            }
+            topScreen("Configuracao", RIGHT);
+            drawMainTabs(0);
+            drawWifiMenu(false);
 
-    case 2:
-        topScreen("Configuracao", NONE);
-        drawMainTabs(1);
-        drawUpdateMenu(0, -1);
-        bottomScreen("  -  ", "  +  ", "Atualizar", "Voltar");
-        break;
-    
-    case 3:
-        topScreen("Configuracao", NONE);
-        drawMainTabs(1);
-        drawUpdateMenu(1, -1);
-        bottomScreen("  <  ", "  >  ", "    OK    ", "Voltar");
-        break;
-    
-    case 4:
-        topScreen("Configuracao", NONE);
-        drawMainTabs(1);
-        drawUpdateMenu(1, -1);
-        drawVersionInput(0);
-        bottomScreen("  -  ", "  +  ", "   Prox.   ", "Voltar");
-        break;
-    
-    case 5:
-        topScreen("Configuracao", NONE);
-        drawMainTabs(1);
-        drawUpdateMenu(1, -1);
-        drawVersionInput(1);
-        bottomScreen("  -  ", "  +  ", "   Prox.   ", "Voltar");
-        break;
-    
-    case 6:
-        topScreen("Configuracao", NONE);
-        drawMainTabs(1);
-        drawUpdateMenu(1, -1);
-        drawVersionInput(2);
-        bottomScreen("  -  ", "  +  ", "Atualizar", "Voltar");
-        break;
-    
-    case 7:
-        topScreen("Configuracao", NONE);
-        drawMainTabs(2);
-        drawAboutMenu();
-        bottomScreen(" < ", " > ", "            ", "Voltar");
-        break;
-    
-    
-    default:
-        break;
-    }
+            btn[0]->read(menu, DECREMENT, 10, 0);
+            btn[1]->read(&submenu, INCREMENT, 8, 0, 0, 2);
+            btn[2]->read(&submenu, INCREMENT, 8, 0);
+            btn[3]->read(menu, DECREMENT, 10, 0);
+
+            bottomScreen("<", ">", "  Config.  ", "Voltar");
+            break;
+        
+        case 1:
+        {
+            
+            topScreen("Configuracao", BOTH, BLACK);
+            drawMainTabs(0);
+            drawWifiMenu(true);
+
+            if (btn[2]->read(&dummy_value, -1, 1, 0))
+                wifi->handleReset();    
+            btn[3]->read(&submenu, DECREMENT, 8, 0);
+            bottomScreen("    ", "    ", "       OK       ", "Voltar");
+            break;
+        }
+
+        case 2:
+        {   
+            if(lastSubmenu != submenu)
+            {
+                display->fillRect(0, 70, 480, 200, BLACK);
+                lastSubmenu = submenu;
+            }
+
+            topScreen("Configuracao", BOTH, WHITE);
+            drawMainTabs(1);
+            drawUpdateMenu(-1, -1);
+
+            btn[0]->read(&submenu, DECREMENT, 8, 0, 0, 2);
+            btn[1]->read(&submenu, INCREMENT, 8, 0, 0, 6);
+            btn[2]->read(&submenu, INCREMENT, 8, 0);
+            btn[3]->read(&submenu, DECREMENT, 8, 0, 0, 2);
+
+            bottomScreen("  <  ", "  >  ", "  Config.  ", "Voltar");
+            break;
+        }
+
+        case 3:
+        {   
+            if(lastSubmenu != submenu)
+            {
+                display->fillRect(0, 70, 480, 200, BLACK);
+                lastSubmenu = submenu;
+            }
+
+            topScreen("Configuracao", BOTH, BLACK);
+            drawMainTabs(1);
+            drawUpdateMenu(0, -1);
+
+            btn[0]->read(&submenu, DECREMENT, 8, 0);
+            btn[1]->read(&submenu, INCREMENT, 8, 0);
+            if(btn[2]->read(&dummy_value, -1, 1, 0))
+            {} // reinicia no modo atualizacao do sistema
+            btn[3]->read(&submenu, DECREMENT, 8, 0);
+
+            bottomScreen("  <  ", "  >  ", "Atualizar", "Voltar");
+            break;
+        }
+
+        case 4:
+
+            if(lastSubmenu != submenu)
+            {
+                display->fillRect(0, 70, 480, 200, BLACK);
+                lastSubmenu = submenu;
+            }
+
+            topScreen("Configuracao", BOTH, BLACK);
+            drawMainTabs(1);
+            drawUpdateMenu(1, -1);
+
+            
+            btn[2]->read(&submenu, INCREMENT, 8, 0);
+            btn[3]->read(&submenu, DECREMENT, 8, 0);
+
+            bottomScreen("     ", "     ", "       OK       ", "Voltar");
+            break;
+        
+        case 5:
+        {
+            if(lastSubmenu != submenu)
+            {
+                display->fillRect(0, 70, 480, 200, BLACK);
+                lastSubmenu = submenu;
+            }
+            static float digit1 = 0;
+            topScreen("Configuracao", BOTH, BLACK);
+            drawMainTabs(1);
+            drawUpdateMenu(1, -1);
+            drawVersionInput(0);
+            btn[0]->read(&digit1, DECREMENT, 9, 0);
+            btn[1]->read(&digit1, INCREMENT, 9, 0);
+            
+            ota->setDigit(1,digit1);
+           
+            btn[2]->read(&submenu, INCREMENT, 8, 0);
+            btn[3]->read(&submenu, DECREMENT, 8, 0);
+
+            bottomScreen("  -  ", "  +  ", "   Prox.   ", "Voltar");
+            break;
+        }
+        case 6:
+        {
+            static float digit2 = 0;
+            topScreen("Configuracao", BOTH, BLACK);
+            drawMainTabs(1);
+            drawUpdateMenu(1, -1);
+            drawVersionInput(1);
+            btn[0]->read(&digit2, DECREMENT, 9, 0);
+            btn[1]->read(&digit2, INCREMENT, 9, 0);
+            
+            ota->setDigit(2,digit2);
+
+            btn[2]->read(&submenu, INCREMENT, 8, 0);
+            btn[3]->read(&submenu, DECREMENT, 8, 0);
+
+            bottomScreen("  -  ", "  +  ", "   Prox.   ", "Voltar");
+            break;
+        }
+        case 7:
+        {
+            if(lastSubmenu != submenu)
+            {
+                display->fillRect(0, 70, 480, 200, BLACK);
+                lastSubmenu = submenu;
+            }
+            static float digit3 = 0;
+            topScreen("Configuracao", BOTH, BLACK);
+            drawMainTabs(1);
+            drawUpdateMenu(1, -1);
+            drawVersionInput(2);
+            btn[0]->read(&digit3, DECREMENT, 9, 0);
+            btn[1]->read(&digit3, INCREMENT, 9, 0);
+            
+            ota->setDigit(3,digit3);
+
+            if(btn[2]->read(&dummy_value, -1, 1, 0))
+            {} // reinicia no modo atualizacao de modulo
+            btn[3]->read(&submenu, DECREMENT, 8, 0);
+
+            bottomScreen("  -  ", "  +  ", "Atualizar", "Voltar");
+            break;
+        }
+        case 8:
+            if(lastSubmenu != submenu)
+            {
+                display->fillRect(0, 70, 480, 200, BLACK);
+                lastSubmenu = submenu;
+            }
+
+            topScreen("Configuracao", LEFT);
+            drawMainTabs(2);
+            drawAboutMenu();
+
+            btn[0]->read(&submenu, DECREMENT, 8, 0, 0, 6);
+
+            btn[3]->read(menu, DECREMENT, 10, 0, 0);
+
+            bottomScreen(" < ", "   ", "                 ", "Voltar");
+            break;
+        
+        
+        default:
+            break;
+        }
 }
+
 
 void Display::menuSwitch(float *menu)
 {
+    static float lastmenu = -1;
+    if(lastmenu != *menu)
+    {
+        flushScreen();
+        lastmenu = *menu;
+    }
+
     switch (int(*menu))
     {
         case 0:
         {
-            mainScreen();
-            // if (btn[1]->read(menu, INCREMENT, 10, 0))
-            //      flushScreen();
+            mainScreen(menu);
+            
             break;
         }
 
         case 1:
         {
-            adjustScreen();
-            // if(btn[0]->read(menu, DECREMENT, 10, 0))
-            //     flushScreen();
-            // if(btn[1]->read(menu, INCREMENT, 10, 0))
-            //     flushScreen();
-            // if(btn[3]->read(menu, DECREMENT, 10, 0))
-            //     flushScreen();
+            adjustScreen(menu);
             break;
         }
         
         case 2:
         {
-            confScreen();
-            // if(btn[0]->read(menu, DECREMENT, 10, 0))
-            //     flushScreen();
-            
-            // if(btn[3]->read(menu, DECREMENT, 10, 0))
-            //     flushScreen();
+            confScreen(menu);
             break;
         }
-
-
-
-
         default:
             break;
     }
@@ -407,7 +632,7 @@ void Display::bottomScreen(String t1, String t2, String t3, String t4)
 
 }
 
-void Display::topScreen(String label, int arrowSetup)
+void Display::topScreen(String label, int arrowSetup, int color)
 {
     const int height = display->fontHeight(2);
     const int textPos = (50 - height) / 2;
@@ -423,21 +648,22 @@ void Display::topScreen(String label, int arrowSetup)
 
     display->drawString(label, xStart, textPos, 4);
 
+    
     // ----- LEFT -----
     if (arrowSetup == LEFT || arrowSetup == BOTH)
     {
         int arrowX = leftTextX - 10 - 8;   // 8 = tamanho que você usa em animateArrow
-        animateArrow(arrowX, textPos, 6, WHITE, LEFT);
+        animateArrow(arrowX, textPos, 6, color, LEFT);
     }
 
     // ----- RIGHT -----
     if (arrowSetup == RIGHT || arrowSetup == BOTH)
     {
         int arrowX = rightTextX + 10;
-        animateArrow(arrowX, textPos, 6, WHITE, RIGHT);
+        animateArrow(arrowX, textPos, 6, color, RIGHT);
     }
 
-    // ----- TIME -----
+       // ----- TIME -----
     String time = String(rtc->getHour()) + ":" + (rtc->getMinute() < 10 ? "0" + String(rtc->getMinute()) : String(rtc->getMinute()));
     const int timeX = 440; 
     display->setTextColor(WHITE, BLACK);
@@ -470,39 +696,44 @@ void Display::animateArrow(int x, int y, int size, uint16_t color, int orientati
         }
     }
 
+    // Converte cor BLACK para RGB
+    uint8_t blackR = ((BLACK >> 11) & 0x1F) * 255 / 31;
+    uint8_t blackG = ((BLACK >> 5) & 0x3F) * 255 / 63;
+    uint8_t blackB = (BLACK & 0x1F) * 255 / 31;
+
     // Converte cor original para RGB
     uint8_t r = ((color >> 11) & 0x1F) * 255 / 31;
     uint8_t g = ((color >> 5) & 0x3F) * 255 / 63;
     uint8_t b = (color & 0x1F) * 255 / 31;
 
-    // Aplica brilho (fade)
-    r = (r * brightness) / 255;
-    g = (g * brightness) / 255;
-    b = (b * brightness) / 255;
+    // Interpola entre BLACK e a cor desejada baseado no brightness
+    r = blackR + ((r - blackR) * brightness) / 255;
+    g = blackG + ((g - blackG) * brightness) / 255;
+    b = blackB + ((b - blackB) * brightness) / 255;
 
     uint16_t fadeColor = display->color565(r, g, b);
 
-    // Desenha triângulo apontando para a direita
+    // Desenha triângulo apontando para a esquerda
     if (orientation == LEFT)
     {
         display->fillTriangle(
-        x,       y,          // ponto esquerdo
-        x+size,  y-size,     // topo
-        x+size,  y+size,     // base
-        fadeColor
-    );
+            x,       y,          // ponto esquerdo
+            x+size,  y-size,     // topo
+            x+size,  y+size,     // base
+            fadeColor
+        );
     }
     
+    // Desenha triângulo apontando para a direita
     if (orientation == RIGHT)
     {
         display->fillTriangle(
-        x+size,  y,        // ponta direita
-        x,       y-size,   // topo
-        x,       y+size,   // base
-        fadeColor
-    );
+            x+size,  y,        // ponta direita
+            x,       y-size,   // topo
+            x,       y+size,   // base
+            fadeColor
+        );
     }
-    
 }
 
 uint16_t color565(uint8_t r, uint8_t g, uint8_t b) 

@@ -6,6 +6,7 @@
 #include "Button.hpp"
 #include "DataClass.hpp"
 #include "OTA.hpp"
+#include "WifiManager.hpp"
 
 #define DARK_GREY 0x18e3
 #define BLACK     0x18a3  // 0x1E1E1E -> RGB(30,30,30)
@@ -18,7 +19,7 @@
 #define RIGHT 0
 #define LEFT 1
 #define BOTH -1
-#define NONE -2
+
 
 
 class WifiManager;
@@ -41,7 +42,7 @@ class Display {
         DataClass *dataClass;
         
         void bottomScreen(String t1, String t2, String t3, String t4);
-        void topScreen(String label, int arrowSetup);
+        void topScreen(String label, int arrowSetup, int color = WHITE);
         void animateArrow(int x, int y, int size, uint16_t color, int orientation);
         void drawArc(int x, int y, float value, float targetValue, float ceiling_value, float tolerance, String label, String unit, int option = 0);
         void drawBar(int x, int y, int width, int height, float value, float targetValue, float ceiling_value, float tolerance, String label, String unit);
@@ -67,9 +68,9 @@ class Display {
         void initLogoScreen();
         void connectionScreen(String note, String note1);
         void qrScreen();
-        void mainScreen();
-        void adjustScreen();
-        void confScreen();
+        void mainScreen(float *menu);
+        void adjustScreen(float *menu);
+        void confScreen(float *menu);
 
         void menuSwitch(float *menu);
         

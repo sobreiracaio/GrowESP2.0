@@ -86,6 +86,8 @@ void initModules()
 	display->connectionScreen("Atualizando relogio", "     Aguarde...     ");
 	rtc->begin();
 	display->flushScreen();
+	for (int i = 0; i < 4; i++)
+		button[i]->init();
 
 }
 
