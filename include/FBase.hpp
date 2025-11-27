@@ -33,5 +33,6 @@ class FBase {
     public:
 
         FBase(FirebaseClient *firebase_client, const String& api, const String& db_url, const String& user_email, const String& user_password, WiFiClientSecure *client_secure);
+        bool init();
 
 };

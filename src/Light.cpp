@@ -4,6 +4,7 @@ Light::Light() : dayTime({0}), nightTime({0}), getNowFunc(nullptr)
 {
     dayTime.tm_isdst = -1;
     nightTime.tm_isdst = -1;
+    status = OFF;
 }
 
 void Light::run(bool isRunning)
@@ -12,7 +13,6 @@ void Light::run(bool isRunning)
         status = OFF;
         return;
     }
-
     if(isRunning == false)
     {
         status = OFF;
@@ -21,7 +21,6 @@ void Light::run(bool isRunning)
     
     // Atualiza o tempo atual através da função registrada
     getNowFunc();
-
     // Atualiza dayTime e nightTime com a data atual
     dayTime.tm_year = now.tm_year;
     dayTime.tm_mon = now.tm_mon;
@@ -34,15 +33,19 @@ void Light::run(bool isRunning)
     time_t day = mktime(&dayTime);
     time_t night = mktime(&nightTime);
     
-    // Se night <= day, significa que o período atravessa meia-noite
-    // Então nightTime deve ser no dia seguinte
+    // Se night <= day, significa que não há intervalo válido ou atravessa meia-noite
     if(night <= day) {
+        // Se são exatamente iguais, não há período válido
+        if(night == day) {
+            status = OFF;
+            return;
+        }
+        // Se night < day, o período atravessa meia-noite
         nightTime.tm_mday++;
         night = mktime(&nightTime);
     }
-
+    
     time_t realTime = mktime(&now);
-
     // Verifica se está no período de luz
     status = (realTime >= day && realTime < night) ? ON : OFF;
 }
@@ -86,4 +89,9 @@ struct tm Light::getDay()
 struct tm Light::getNight()
 {
     return nightTime;
+}
+
+bool Light::getStatus()
+{
+    return status;
 }

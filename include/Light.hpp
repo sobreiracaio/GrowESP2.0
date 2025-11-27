@@ -22,6 +22,8 @@ class Light {
         struct tm getDay();
         struct tm getNight();
 
+        bool getStatus();
+
         void run(bool isRunning);
 
 

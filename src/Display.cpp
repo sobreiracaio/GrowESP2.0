@@ -62,6 +62,7 @@ void Display::qrScreen()
 }
 void Display::mainScreen(float *menu)
 {
+    static float is_running = 0;
     if (*menu != 0)
         flushScreen();
 
@@ -69,7 +70,7 @@ void Display::mainScreen(float *menu)
 
     display->setTextDatum(TL_DATUM);
     drawArc(60 ,98, dataClass->getTemp(), dataClass->getTargetTemp(), 50, dataClass->getTempTolerance(), "Temperatura" , ".C", 1);
-	drawArc(160 ,98, dataClass->getHumid(), dataClass->getTargetHumid(), 100, dataClass->getHumidTolerance(), "Umidade" , "%");
+	drawArc(160 ,98, dataClass->getHumid(), dataClass->getTargetHumid(), 100, dataClass->getHumidTolerance(), "Umidade" , "%", 2);
 	drawArc(260 ,98, dataClass->getSoil(), dataClass->getTargetSoil(), 100, dataClass->getSoilTolerance(), "Solo" , "%");
     drawBar(20, 170, 180, 15, dataClass->getWaterRes(), dataClass->getReservWarning(), 100, 2, "Reserv. Rega", "%");
     drawBar(20, 218, 180, 15, dataClass->getHumidRes(), dataClass->getReservWarning(), 100, 2,  "Reserv. Umid.", "%");
@@ -78,9 +79,22 @@ void Display::mainScreen(float *menu)
 
     if (btn[1]->read(menu, INCREMENT, 10, 0))
                 flushScreen();
+                
+                
+    if(dataClass->getIsRunning() == false)
+    {
+        btn[2]->read(&is_running, CHANGE_STATE, 1, 0);
+        dataClass->setIsRunning(is_running);
 
-    bottomScreen(" ", ">", "Iniciar", " ");
+        bottomScreen(" ", ">", "Iniciar", "             ");
+    }
+    else
+    {
+        btn[3]->read(&is_running, CHANGE_STATE, 1, 0);
+        dataClass->setIsRunning(is_running);
 
+        bottomScreen(" ", ">", "                ", "Parar");
+    }
 }
 void Display::adjustScreen(float *menu)
 {
@@ -817,6 +831,8 @@ void Display::drawArc(int x, int y, float value, float targetValue, float ceilin
         uint16_t color = 0;
         if (option == 1)
             color = getGradientColor(a, BLUE, YELLOW, RED);
+        else if (option == 2)
+            color = getGradientColor(a, YELLOW, BLUE, PURPLE);
         else
 		    color = getGradientColor(a);
 		display->drawArc(x, y, radius, 33 , a - 1 , a + step, color, BLACK);

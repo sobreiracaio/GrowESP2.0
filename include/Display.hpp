@@ -7,6 +7,7 @@
 #include "DataClass.hpp"
 #include "OTA.hpp"
 #include "WifiManager.hpp"
+#include "FBase.hpp"
 
 #define DARK_GREY 0x18e3
 #define BLACK     0x18a3  // 0x1E1E1E -> RGB(30,30,30)
@@ -15,6 +16,7 @@
 #define BLUE      0x4c57  // 0x2176AE -> RGB(33,118,174)
 #define RED       0xba69  // 0xFF715B -> RGB(255,113,91)
 #define GREEN     0x4dea  // 0x1EA896 -> RGB(30,168,150)
+#define PURPLE    0x701f 
 
 #define RIGHT 0
 #define LEFT 1

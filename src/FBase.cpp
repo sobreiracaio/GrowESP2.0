@@ -5,3 +5,8 @@ FBase::FBase(FirebaseClient *firebase_client, const String& api, const String& d
                 firebaseClient(firebase_client), apiKey(api), dbUrl(db_url), email(user_email), password(user_password), clientSecure(client_secure),
                 user_auth(api.c_str(), user_email.c_str(), user_password.c_str()),
                 aClient(*client_secure), authenticated(false){}
+
+bool FBase::init()
+{
+    
+}
