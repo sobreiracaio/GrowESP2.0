@@ -2,6 +2,7 @@
 
 #include "Libraries.hpp"
 
+
 #define INT 0
 #define FLOAT 1
 #define STRING 2
@@ -14,24 +15,26 @@ class FBase {
         String dbUrl;
         String email;
         String password;
-
-        FirebaseClient *firebaseClient;
+        
         UserAuth user_auth;
         FirebaseApp app;
-        WiFiClientSecure *clientSecure;
+        WiFiClientSecure ssl_client;
         AsyncClientClass aClient;
         RealtimeDatabase Database;
 
         bool authenticated;
 
+        
+        static void processData(AsyncResult &aResult);
+
         static String *asyncTarget;
      
     public:
 
-        FBase(FirebaseClient *firebase_client, const String& api, const String& db_url, const String& user_email, const String& user_password, WiFiClientSecure *client_secure);
+        FBase(const String& api, const String& db_url, const String& user_email, const String& user_password);
         bool init();
         bool isReady();
-        void run();
+        void loop();
 
         String awaitGet(String& path);
         void awaitSet(String &path, String value, int type);

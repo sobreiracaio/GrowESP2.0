@@ -12,7 +12,6 @@
 
 //Libraries
 WiFiClass *wifiClass = NULL;
-WiFiClientSecure *wifiClientSecure = NULL;
 WiFiClient *wifiClient = NULL;
 HTTPClient *httpClient = NULL;
 WebServer *webServer = NULL;
@@ -20,7 +19,6 @@ DNSServer *dnsServer = NULL;
 
 Preferences *prefs = NULL;
 
-FirebaseClient *firebaseClient = NULL;
 
 UpdateClass *update = NULL;
 TFT_eSPI *tft = NULL;
@@ -46,13 +44,13 @@ float menu = 0;
 void initDrivers()
 {
 	wifiClass = new WiFiClass();
-	wifiClientSecure = new WiFiClientSecure();
+	
     wifiClient = new WiFiClient();
 	httpClient = new HTTPClient();
     webServer = new WebServer(80);
     dnsServer = new DNSServer();
     prefs = new Preferences();
-	firebaseClient = new FirebaseClient();
+	
     update = new UpdateClass();
     tft = new TFT_eSPI();
    
@@ -70,8 +68,12 @@ void initClasses()
 	
 	
 	wifi = new WifiManager(webServer, prefs, dnsServer, wifiClient, wifiClass, nullptr);
+    
 	rtc = new Time("pool.ntp.org", "pool.ntp.br", -10800, 0);
-	firebase = new FBase(firebaseClient, API_KEY, DATABASE_URL, wifi->getEmail(), wifi->getPass(), wifiClientSecure);
+    
+	firebase = new FBase(API_KEY, DATABASE_URL, wifi->getEmail(), wifi->getPass());
+    
+
 	ota = new OTA(prefs);
 	display = new Display(tft, firebase, rtc, ota, wifi, button, data_class); 
 	
@@ -84,7 +86,7 @@ void initModules()
 	display->initDisplay();
 	display->initLogoScreen();
 	wifi->wifiInit();
-	display->connectionScreen("Atualizando relogio", "     Aguarde...     ");
+    display->connectionScreen("Atualizando relogio", "     Aguarde...     ");
 	rtc->begin();
 	display->flushScreen();
 	for (int i = 0; i < 4; i++)
@@ -93,7 +95,8 @@ void initModules()
     safeEmail = wifi->getEmail();
     safeEmail.replace(".","_");
     display->connectionScreen("Atualizando banco de dados", "     Aguarde...     ");
-    firebase->init();
+    while (!firebase->init())
+        display->connectionScreen("Atualizando banco de dados", "     Aguarde...     ");
     firebase->awaitSet(safeEmail + "/Pass", wifi->getPass(), STRING);
 	
 
@@ -197,9 +200,9 @@ void setup()
 }
 
 
-
 void loop() 
 {
+    wifi->loop();
 	getNow();
 	sendData(parseDataToSend());
   	parseReceivedData(readData().c_str());

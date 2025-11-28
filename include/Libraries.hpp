@@ -7,6 +7,7 @@
 
 
 #include <WiFi.h>
+#include <FirebaseClient.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
 #include <WebServer.h>
@@ -15,7 +16,6 @@
 
 #include <time.h>
 
-#include <FirebaseClient.h>
 
 #include <Update.h>
 

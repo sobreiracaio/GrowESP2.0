@@ -27,7 +27,9 @@ class WifiManager {
     public:
         WifiManager(WebServer *web_server, Preferences *preferences, DNSServer *dns_server, WiFiClient *wifi_client, WiFiClass * wifi_class, Display *tft);
         bool wifiInit();
-
+        void loop();
+        void connectToWiFi();
+        bool getStatus();
         void startPortal();
         void handleRoot();
         void handleSave();

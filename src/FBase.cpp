@@ -1,43 +1,84 @@
 #include "FBase.hpp"
 
-FBase::FBase(FirebaseClient *firebase_client, const String& api, const String& db_url, const String& user_email, const String& user_password, 
-             WiFiClientSecure *client_secure) : 
-                firebaseClient(firebase_client), apiKey(api), dbUrl(db_url), email(user_email), password(user_password), clientSecure(client_secure),
-                user_auth(api.c_str(), user_email.c_str(), user_password.c_str()),
-                aClient(*client_secure), authenticated(false){}
+FBase::FBase(const String& api, const String& db_url, const String& user_email, const String& user_password)
+    : apiKey(api), 
+      dbUrl(db_url), 
+      email(user_email), 
+      password(user_password),
+      user_auth(api.c_str(), user_email.c_str(), user_password.c_str()),
+      aClient(ssl_client),
+      authenticated(false) 
+      {}
 
-bool FBase::init()
+void FBase::processData(AsyncResult &aResult)
 {
-    clientSecure->setInsecure();
-
-    initializeApp(aClient, app, getAuth(user_auth), nullptr, "authTask");
-    
-    if(app.ready())
+    if (aResult.isEvent())
     {
-        authenticated = true;
+        Firebase.printf("Event task: %s, msg: %s, code: %d\n", aResult.uid().c_str(), aResult.eventLog().message().c_str(), aResult.eventLog().code());
+    }
 
+    if (aResult.isDebug())
+    {
+        Firebase.printf("Debug task: %s, msg: %s\n", aResult.uid().c_str(), aResult.debug().c_str());
+    }
+
+    if (aResult.isError())
+    {
+        Firebase.printf("Error task: %s, msg: %s, code: %d\n", aResult.uid().c_str(), aResult.error().message().c_str(), aResult.error().code());
+    }
+
+    if (aResult.available())
+    {
+        Firebase.printf("task: %s, payload: %s\n", aResult.uid().c_str(), aResult.c_str());
+    }
+}
+
+bool FBase::init() {
+    Serial.println("\n=== 🔥 Inicializando Firebase ===");
+    Serial.printf("Firebase Client v%s\n", FIREBASE_CLIENT_VERSION);
+    
+
+
+    // Configurar SSL
+    ssl_client.setInsecure();
+    
+    // Inicializar o app com autenticação
+    Serial.println("🔐 Autenticando...");
+    initializeApp(aClient, app, getAuth(user_auth), processData, "authTask");
+    
+    // Aguardar autenticação (máximo 30 segundos)
+    unsigned long timeout = millis();
+    while (app.isInitialized() && !app.ready() && millis() - timeout < 30000) {
+        app.loop();
+        
+    }
+    
+    if (app.ready()) {
+        Serial.println("✅ Firebase autenticado com sucesso!");
+        authenticated = true;
+        
+        // Inicializar Realtime Database
         app.getApp<RealtimeDatabase>(Database);
         Database.url(dbUrl.c_str());
-
+        
+        Serial.println("✅ Realtime Database configurado!");
+        Serial.println("=================================\n");
         return true;
-    }
-    else
-    {
+    } else {
+        Serial.println("❌ Erro na autenticação do Firebase!");
+        Serial.println("=================================\n");
         authenticated = false;
         return false;
     }
-
 }
 
-bool FBase::isReady()
-{
-    return app.ready() && authenticated;
-}
-
-void FBase::run()
-{
+void FBase::loop() {
     app.loop();
     Database.loop();
+}
+
+bool FBase::isReady() {
+    return authenticated && app.ready();
 }
 
 String* FBase::asyncTarget = nullptr;

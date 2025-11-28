@@ -190,3 +190,49 @@ String WifiManager::getPass()
 {
     return userpass;
 }
+
+
+void WifiManager::loop() 
+{
+    // Monitora conexão e tenta reconectar
+    static unsigned long lastCheck = 0;
+    if (millis() - lastCheck > 10000) {
+        lastCheck = millis();
+        if (wifi->status() != WL_CONNECTED) {
+            Serial.println("⚠️ Conexão perdida. Tentando reconectar...");
+            connectToWiFi();
+        }
+    }
+}
+
+void WifiManager::connectToWiFi() 
+{
+    wifi->disconnect();
+    wifi->begin(ssid.c_str(), password.c_str());
+
+    unsigned long start = millis();
+    unsigned long lastPrint = millis();
+    const unsigned long timeout = 10000; // 10 segundos
+    const unsigned long printInterval = 500; // intervalo de print
+
+    while (wifi->status() != WL_CONNECTED && millis() - start < timeout) 
+    {
+        if (millis() - lastPrint >= printInterval) 
+        {
+            Serial.print(".");
+            lastPrint = millis();
+        }
+
+        // Aqui você pode colocar outras tarefas não-bloqueantes
+    }
+
+    Serial.println(wifi->status() == WL_CONNECTED ? "\n✅ Reconectado!" : "\n❌ Falha ao reconectar.");
+}
+
+ bool WifiManager::getStatus()
+ {
+    if(wifi->status() != WL_CONNECTED)
+        return false;
+    else
+        return true;
+ }
