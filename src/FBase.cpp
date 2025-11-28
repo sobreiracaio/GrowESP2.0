@@ -1,15 +1,5 @@
 #include "FBase.hpp"
 
-FBase::FBase(const String& api, const String& db_url, const String& user_email, const String& user_password)
-    : apiKey(api), 
-      dbUrl(db_url), 
-      email(user_email), 
-      password(user_password),
-      user_auth(api.c_str(), user_email.c_str(), user_password.c_str()),
-      aClient(ssl_client),
-      authenticated(false) 
-      {}
-
 void FBase::processData(AsyncResult &aResult)
 {
     if (aResult.isEvent())
@@ -33,12 +23,23 @@ void FBase::processData(AsyncResult &aResult)
     }
 }
 
+FBase::FBase(const String& api, const String& db_url, const String& user_email, const String& user_password)
+    : apiKey(api), 
+      dbUrl(db_url), 
+      email(user_email), 
+      password(user_password),
+      user_auth(apiKey.c_str(), email.c_str(), password.c_str()),
+      aClient(ssl_client),
+      authenticated(false) 
+      {}
+
+
+
 bool FBase::init() {
     Serial.println("\n=== 🔥 Inicializando Firebase ===");
     Serial.printf("Firebase Client v%s\n", FIREBASE_CLIENT_VERSION);
     
-
-
+    
     // Configurar SSL
     ssl_client.setInsecure();
     
@@ -47,10 +48,11 @@ bool FBase::init() {
     initializeApp(aClient, app, getAuth(user_auth), processData, "authTask");
     
     // Aguardar autenticação (máximo 30 segundos)
-    unsigned long timeout = millis();
-    while (app.isInitialized() && !app.ready() && millis() - timeout < 30000) {
+    //unsigned long timeout = millis();
+    while (app.isInitialized() && !app.ready()) // && millis() - timeout < 30000) 
+    {
         app.loop();
-        
+        delay(5);
     }
     
     if (app.ready()) {

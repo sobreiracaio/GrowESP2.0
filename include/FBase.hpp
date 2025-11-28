@@ -1,7 +1,13 @@
 #pragma once
 
-#include "Libraries.hpp"
+#define ENABLE_DATABASE
+#define ENABLE_USER_AUTH
 
+#include <FirebaseClient.h>
+#include <WiFiClientSecure.h>
+
+#define API_KEY "AIzaSyBZOxkbUT3b9COdhCqNul3kNy6HEuSU5S4"
+#define DATABASE_URL "https://growstation-183df-default-rtdb.firebaseio.com"
 
 #define INT 0
 #define FLOAT 1

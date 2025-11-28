@@ -47,7 +47,7 @@ void initClasses()
 	
 	
     
-	firebase = new FBase(API_KEY, DATABASE_URL, wifi.getEmail(), wifi.getPass());
+	
     
 
 	
@@ -70,6 +70,7 @@ void initModules()
     
     safeEmail = wifi.getEmail();
     safeEmail.replace(".","_");
+    firebase = new FBase(API_KEY, DATABASE_URL, wifi.getEmail(), wifi.getPass());
     display->connectionScreen("Atualizando banco de dados", "     Aguarde...     ");
     while (!firebase->init())
         display->connectionScreen("Atualizando banco de dados", "     Aguarde...     ");
@@ -178,6 +179,7 @@ void setup()
 void loop() 
 {
     wifi.loop();
+    firebase->loop();
 	getNow();
 	sendData(parseDataToSend());
   	parseReceivedData(readData().c_str());
