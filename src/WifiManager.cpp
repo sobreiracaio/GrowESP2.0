@@ -1,8 +1,7 @@
 #include "WifiManager.hpp"
 
-WifiManager::WifiManager(WebServer *web_server, Preferences *preferences, DNSServer *dns_server, WiFiClient *wifi_client, WiFiClass * wifi_class, Display *tft) : webServer(web_server), prefs(preferences), dnsServer(dns_server),
-                                                           wifiClient(wifi_client), wifi(wifi_class), display(tft) 
-                                                           {}
+WifiManager::WifiManager(Preferences *preferences, Display *tft) : prefs(preferences), display(tft) 
+{}
 
 void WifiManager::injectDisplay(Display *tft)
 {
@@ -26,20 +25,20 @@ bool WifiManager::wifiInit()
         return false;
     }
 
-    wifi->begin(ssid.c_str(), password.c_str());
+    WiFi.begin(ssid.c_str(), password.c_str());
     
     
     unsigned long start = millis();
-    while (wifi->status() != WL_CONNECTED && millis() - start < 10000) 
+    while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) 
     {
         display->connectionScreen("Conectando em:",ssid.c_str());
     }
 
-    if (wifi->status() == WL_CONNECTED) 
+    if (WiFi.status() == WL_CONNECTED) 
     {
         display->flushScreen();
         display->connectionScreen("Conectado em:",ssid.c_str());
-        //Serial.printf("\n✅ Conectado em %s | IP: %s\n", ssid.c_str(), wifi->localIP().toString().c_str());
+        //Serial.printf("\n✅ Conectado em %s | IP: %s\n", ssid.c_str(), WiFi.localIP().toString().c_str());
         return true;
     } 
     else 
@@ -55,25 +54,25 @@ bool WifiManager::wifiInit()
 
 void WifiManager::startPortal() 
 {
-    wifi->mode(WIFI_AP);
-    wifi->softAP("GrowBox-Setup", "12345678");
-    IPAddress IP = wifi->softAPIP();
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP("GrowBox-Setup", "12345678");
+    IPAddress IP = WiFi.softAPIP();
     Serial.print("🌐 Portal ativo em: ");
     Serial.println(IP);
     
     display->qrScreen();
-    dnsServer->start(53, "*", IP);
+    dnsServer.start(53, "*", IP);
 
-    webServer->on("/", std::bind(&WifiManager::handleRoot, this));
-    webServer->on("/save", std::bind(&WifiManager::handleSave, this));
+    webServer.on("/", std::bind(&WifiManager::handleRoot, this));
+    webServer.on("/save", std::bind(&WifiManager::handleSave, this));
 
-    webServer->onNotFound([this, IP]() 
+    webServer.onNotFound([this, IP]() 
     {
-        webServer->sendHeader("Location", String("http://") + IP.toString(), true);
-        webServer->send(302, "text/plain", "");
+        webServer.sendHeader("Location", String("http://") + IP.toString(), true);
+        webServer.send(302, "text/plain", "");
     });
 
-    webServer->begin();
+    webServer.begin();
 
     
     unsigned long previousMillis = 0;
@@ -86,8 +85,8 @@ void WifiManager::startPortal()
         {
             previousMillis = currentMillis;
         
-            dnsServer->processNextRequest();
-            webServer->handleClient();
+            dnsServer.processNextRequest();
+            webServer.handleClient();
         }
     }
 }
@@ -129,37 +128,37 @@ void WifiManager::handleRoot()
     html += "<input type='submit' value='Salvar'>";
     html += "</form></body></html>";
 
-    webServer->send(200, "text/html", html);
+    webServer.send(200, "text/html", html);
 }
 
 void WifiManager::handleSave() 
 {
-    if (webServer->hasArg("ssid") && webServer->hasArg("password") && webServer->hasArg("email") && webServer->hasArg("userpass")) 
+    if (webServer.hasArg("ssid") && webServer.hasArg("password") && webServer.hasArg("email") && webServer.hasArg("userpass")) 
     {
-        String newSsid = webServer->arg("ssid");
-        String newPass = webServer->arg("password");
-        String newEmail = webServer->arg("email");
-        String newUserPass = webServer->arg("userpass");
+        String newSsid = webServer.arg("ssid");
+        String newPass = webServer.arg("password");
+        String newEmail = webServer.arg("email");
+        String newUserPass = webServer.arg("userpass");
 
         prefs->putString("ssid", newSsid);
         prefs->putString("password", newPass);
         prefs->putString("email", newEmail);
         prefs->putString("userpass", newUserPass);
 
-        webServer->send(200, "text/html", "<html><body><h1>Salvo!</h1><p>O dispositivo vai reiniciar.</p></body></html>");
+        webServer.send(200, "text/html", "<html><body><h1>Salvo!</h1><p>O dispositivo vai reiniciar.</p></body></html>");
         delay(2000);
         ESP.restart();
     } 
     else 
     {
-        webServer->send(400, "text/plain", "Faltam parametros.");
+        webServer.send(400, "text/plain", "Faltam parametros.");
     }
 }
 
 String WifiManager::generateNetWorkList() 
 {
     String options = "";
-    int n = wifi->scanNetworks();
+    int n = WiFi.scanNetworks();
     if (n == 0) 
     {
         options = "<option value=''>Nenhuma rede encontrada</option>";
@@ -168,10 +167,10 @@ String WifiManager::generateNetWorkList()
     {
         for (int i = 0; i < n; i++) 
         {
-            options += "<option value='" + wifi->SSID(i) + "'>" + wifi->SSID(i) + " (" + String(wifi->RSSI(i)) + " dBm)</option>";
+            options += "<option value='" + WiFi.SSID(i) + "'>" + WiFi.SSID(i) + " (" + String(WiFi.RSSI(i)) + " dBm)</option>";
         }
     }
-    wifi->scanDelete();
+    WiFi.scanDelete();
     return options;
 }
 
@@ -198,7 +197,7 @@ void WifiManager::loop()
     static unsigned long lastCheck = 0;
     if (millis() - lastCheck > 10000) {
         lastCheck = millis();
-        if (wifi->status() != WL_CONNECTED) {
+        if (WiFi.status() != WL_CONNECTED) {
             Serial.println("⚠️ Conexão perdida. Tentando reconectar...");
             connectToWiFi();
         }
@@ -207,15 +206,15 @@ void WifiManager::loop()
 
 void WifiManager::connectToWiFi() 
 {
-    wifi->disconnect();
-    wifi->begin(ssid.c_str(), password.c_str());
+    WiFi.disconnect();
+    WiFi.begin(ssid.c_str(), password.c_str());
 
     unsigned long start = millis();
     unsigned long lastPrint = millis();
     const unsigned long timeout = 10000; // 10 segundos
     const unsigned long printInterval = 500; // intervalo de print
 
-    while (wifi->status() != WL_CONNECTED && millis() - start < timeout) 
+    while (WiFi.status() != WL_CONNECTED && millis() - start < timeout) 
     {
         if (millis() - lastPrint >= printInterval) 
         {
@@ -226,12 +225,12 @@ void WifiManager::connectToWiFi()
         // Aqui você pode colocar outras tarefas não-bloqueantes
     }
 
-    Serial.println(wifi->status() == WL_CONNECTED ? "\n✅ Reconectado!" : "\n❌ Falha ao reconectar.");
+    Serial.println(WiFi.status() == WL_CONNECTED ? "\n✅ Reconectado!" : "\n❌ Falha ao reconectar.");
 }
 
  bool WifiManager::getStatus()
  {
-    if(wifi->status() != WL_CONNECTED)
+    if(WiFi.status() != WL_CONNECTED)
         return false;
     else
         return true;

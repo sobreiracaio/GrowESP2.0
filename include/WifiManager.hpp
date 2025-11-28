@@ -8,11 +8,10 @@ class Display;
 class WifiManager {
 
     private:
-        WebServer *webServer;
+        WebServer webServer{80};
         Preferences *prefs;
-        DNSServer *dnsServer;
-        WiFiClient *wifiClient;
-        WiFiClass *wifi;
+        DNSServer dnsServer;
+        WiFiClient wifiClient;
         Display *display;
 
         String ssid;
@@ -25,7 +24,7 @@ class WifiManager {
     
 
     public:
-        WifiManager(WebServer *web_server, Preferences *preferences, DNSServer *dns_server, WiFiClient *wifi_client, WiFiClass * wifi_class, Display *tft);
+        WifiManager(Preferences *preferences, Display *tft);
         bool wifiInit();
         void loop();
         void connectToWiFi();
