@@ -50,7 +50,7 @@ void FBase::asyncCallback(AsyncResult &aResult)
         *asyncTarget = aResult.c_str();
 }
 
-void FBase::aSyncGet(const String& path, String &result)
+void FBase::aSyncGet(String& path, String &result)
 {
     if (!isReady()) return;
     
@@ -62,23 +62,25 @@ void FBase::aSyncGet(const String& path, String &result)
 }
 
 
-void FBase::aSyncSet(const String &path, String &value)
+void FBase::aSyncSet(String &path, String &value)
 {
     if (!isReady()) return;
 
     Database.set(aClient, path, value.c_str());
 }
 
-String FBase::awaitGet(const String& path)
+String FBase::awaitGet(String& path)
 {
+    if (!isReady()) return "";
     String res = "";
 
     res = Database.get(aClient, path.c_str());
-    
+
     return res;
 }
-void FBase::awaitSet(const String &path, String &value, int type)
+void FBase::awaitSet(String &path, String value, int type)
 {
+    if (!isReady()) return;
     if(type == INT)
         Database.set<int>(aClient, path.c_str(), value.toInt());
     if(type == FLOAT)

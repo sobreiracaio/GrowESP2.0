@@ -33,12 +33,12 @@ class FBase {
         bool isReady();
         void run();
 
-        String awaitGet(const String& path);
-        void awaitSet(const String &path, String &value, int type);
+        String awaitGet(String& path);
+        void awaitSet(String &path, String value, int type);
 
-        void aSyncSet(const String &path, String &value);
+        void aSyncSet(String &path, String &value);
 
-        void aSyncGet(const String& path, String &result);
+        void aSyncGet(String& path, String &result);
         static void asyncCallback(AsyncResult &aResult);
 };
 

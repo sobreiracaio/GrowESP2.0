@@ -39,6 +39,7 @@ Light *light = NULL;
 
 
 struct tm now = {0};
+String safeEmail = "";
 
 float menu = 0;
 
@@ -52,7 +53,7 @@ void initDrivers()
     dnsServer = new DNSServer();
     prefs = new Preferences();
 	firebaseClient = new FirebaseClient();
-	update = new UpdateClass();
+    update = new UpdateClass();
     tft = new TFT_eSPI();
    
 }
@@ -88,6 +89,12 @@ void initModules()
 	display->flushScreen();
 	for (int i = 0; i < 4; i++)
 		button[i]->init();
+    
+    safeEmail = wifi->getEmail();
+    safeEmail.replace(".","_");
+    display->connectionScreen("Atualizando banco de dados", "     Aguarde...     ");
+    firebase->init();
+    firebase->awaitSet(safeEmail + "/Pass", wifi->getPass(), STRING);
 	
 
 }
