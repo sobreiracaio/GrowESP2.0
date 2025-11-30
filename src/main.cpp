@@ -99,8 +99,8 @@ void parseReceivedData(const char *receivedData)
     lastData[sizeof(lastData) - 1] = '\0';
 
     // Variáveis temporárias para cada sensor
-    float temp = 0.0f, humid = 0.0f, soil = 0.0f;
-    bool light = 0, pump = 0, cooler = 0, heater = 0, humidifier = 0, dehumidifier = 0;
+    static float temp = 0.0f, humid = 0.0f, soil = 0.0f;
+    static bool light = 0, pump = 0, cooler = 0, heater = 0, humidifier = 0, dehumidifier = 0;
 
     // Formato esperado: "T:25.5 H:60.2 S:45.0 L:1 P:0 C:1 He:0 Hu:1 DHu:0"
     int parsed = sscanf(receivedData,

@@ -48,7 +48,7 @@ class Display {
         void bottomScreen(String t1, String t2, String t3, String t4);
         void topScreen(String label, int arrowSetup, int color = WHITE);
         void animateArrow(int x, int y, int size, uint16_t color, int orientation);
-        void drawArc(int x, int y, float value, float targetValue, float ceiling_value, float tolerance, String label, String unit, int option = 0);
+        void drawArcGauge(int x, int y, float value, float targetValue, float ceiling_value, float tolerance, String label, String unit, int option = 0);
         void drawBar(int x, int y, int width, int height, float value, float targetValue, float ceiling_value, float tolerance, String label, String unit);
         void labelText(int x, int y, int rectW, int recH, String label, int color);
         void inText(int x, int y, String label);

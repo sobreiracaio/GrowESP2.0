@@ -114,22 +114,23 @@ void Display::asyncSet()
 
 void Display::mainScreen(float *menu)
 {
-    asyncSet();
-
+    
     static float is_running = 0;
     if (*menu != 0)
-        flushScreen();
-
+    flushScreen();
+    
     topScreen("Painel Principal", RIGHT);
-
+    
     display->setTextDatum(TL_DATUM);
-    drawArc(60 ,98, dataClass->getTemp(), dataClass->getTargetTemp(), 50, dataClass->getTempTolerance(), "Temperatura" , ".C", 1);
-	drawArc(160 ,98, dataClass->getHumid(), dataClass->getTargetHumid(), 100, dataClass->getHumidTolerance(), "Umidade" , "%", 2);
-	drawArc(260 ,98, dataClass->getSoil(), dataClass->getTargetSoil(), 100, dataClass->getSoilTolerance(), "Solo" , "%");
+    drawArcGauge(60 ,98, dataClass->getTemp(), dataClass->getTargetTemp(), 50, dataClass->getTempTolerance(), "Temperatura" , ".C", 1);
+	drawArcGauge(160 ,98, dataClass->getHumid(), dataClass->getTargetHumid(), 100, dataClass->getHumidTolerance(), "Umidade" , "%", 2);
+	drawArcGauge(260 ,98, dataClass->getSoil(), dataClass->getTargetSoil(), 100, dataClass->getSoilTolerance(), "Solo" , "%");
     drawBar(20, 170, 180, 15, dataClass->getWaterRes(), dataClass->getReservWarning(), 100, 2, "Reserv. Rega", "%");
     drawBar(20, 218, 180, 15, dataClass->getHumidRes(), dataClass->getReservWarning(), 100, 2,  "Reserv. Umid.", "%");
     
-
+    
+    
+    asyncSet();
     
     actuatorDisplay();
 
@@ -762,7 +763,7 @@ void Display::animateArrow(int x, int y, int size, uint16_t color, int orientati
     unsigned long now = millis();
 
     // Velocidade da animação (ms entre frames)
-    if (now - lastTime >= 20)
+    if (now - lastTime >= 10)
     {
         lastTime = now;
 
@@ -864,7 +865,7 @@ uint16_t getGradientColor(float angle, uint16_t c1 = RED, uint16_t c2 = YELLOW, 
 }
 
 
-void Display::drawArc(int x, int y, float value, float targetValue, float ceiling_value, float tolerance, String label, String unit, int option)
+void Display::drawArcGauge(int x, int y, float value, float targetValue, float ceiling_value, float tolerance, String label, String unit, int option)
 {
 	float angle = map(value, 0, ceiling_value, 0, 270);
     float targetAngle1  = map(targetValue - tolerance, 0, ceiling_value, 0, 270);
@@ -872,8 +873,14 @@ void Display::drawArc(int x, int y, float value, float targetValue, float ceilin
 	float step = 2;
 	int radius = 43;
 
-	String fValue = value < 10 ? "0" + String(value, 1) : String(value, 1);
-	String fTarget = targetValue < 10 ? "0" + String(targetValue, 1) : String(targetValue, 1);
+    if (value >= ceiling_value)
+        value = ceiling_value;
+
+	// String fValue = value < 10 ? "0" + String(value, 1) : String(value, 1);
+    // String fTarget = targetValue < 10 ? "0" + String(targetValue, 1) : String(targetValue, 1);
+  
+    String fValue = String(value, 1);
+    String fTarget = String(targetValue, 1);
 
 	display->setTextColor(WHITE, BLACK);
 	display->setTextDatum(MC_DATUM);
