@@ -30,7 +30,7 @@ FBase::FBase(const String& api, const String& db_url, const String& user_email, 
       password(user_password),
       user_auth(apiKey.c_str(), email.c_str(), password.c_str()),
       aClient(ssl_client),
-      authenticated(false) 
+      authenticated(false)       
       {}
 
 
@@ -105,11 +105,31 @@ void FBase::aSyncGet(String& path, String &result)
 }
 
 
-void FBase::aSyncSet(String &path, String &value)
+void FBase::aSyncSetString(String &path, String &value)
 {
-    if (!isReady()) return;
+    static String lastValue = "";
+    if (!isReady() || lastValue == value) return;
 
     Database.set(aClient, path, value.c_str());
+    lastValue = value;
+}
+
+void FBase::aSyncSetFloat(String &path, float &value)
+{
+    static float lastValue = 0;
+    if (!isReady() || lastValue == value) return;
+
+    Database.set(aClient, path, value);
+    lastValue = value;
+}
+
+void FBase::aSyncSetBool(String &path, bool &value)
+{
+    
+    if (!isReady()) return;
+
+    Database.set(aClient, path, value);
+    
 }
 
 String FBase::awaitGet(String& path)

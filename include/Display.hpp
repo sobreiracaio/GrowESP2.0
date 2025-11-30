@@ -22,7 +22,7 @@
 #define LEFT 1
 #define BOTH -1
 
-
+extern String safeEmail;
 
 class WifiManager;
 class Time;
@@ -42,6 +42,8 @@ class Display {
         WifiManager *wifi;
         Button **btn;
         DataClass *dataClass;
+
+        void asyncSet();
         
         void bottomScreen(String t1, String t2, String t3, String t4);
         void topScreen(String label, int arrowSetup, int color = WHITE);
@@ -77,5 +79,7 @@ class Display {
         void menuSwitch(float *menu);
         
         void flushScreen();
+
+        void injectFBase(FBase *firebase);
        
 };

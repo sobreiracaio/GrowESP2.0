@@ -61,6 +61,7 @@ void initModules()
     safeEmail = wifi.getEmail();
     safeEmail.replace(".","_");
     firebase = new FBase(API_KEY, DATABASE_URL, wifi.getEmail(), wifi.getPass());
+    display->injectFBase(firebase);
     display->connectionScreen("Atualizando banco de dados", "     Aguarde...     ");
     while (!firebase->init())
         display->connectionScreen("Atualizando banco de dados", "     Aguarde...     ");
@@ -99,11 +100,11 @@ void parseReceivedData(const char *receivedData)
 
     // Variáveis temporárias para cada sensor
     float temp = 0.0f, humid = 0.0f, soil = 0.0f;
-    int light = 0, pump = 0, cooler = 0, heater = 0, humidifier = 0, dehumidifier = 0;
+    bool light = 0, pump = 0, cooler = 0, heater = 0, humidifier = 0, dehumidifier = 0;
 
     // Formato esperado: "T:25.5 H:60.2 S:45.0 L:1 P:0 C:1 He:0 Hu:1 DHu:0"
     int parsed = sscanf(receivedData,
-                        "T:%f H:%f S:%f L:%d P:%d C:%d H:%d Hu:%d DHu:%d",
+                        "T:%f H:%f S:%f L:%d P:%d C:%d He:%d Hu:%d DHu:%d",
                         &temp, &humid, &soil,
                         &light, &pump, &cooler, &heater, &humidifier, &dehumidifier);
 
@@ -122,6 +123,7 @@ void parseReceivedData(const char *receivedData)
     }
 }
 
+//Serial.printf("L:%d P:%d C:%d He:%d Hu:%d DHu:%d\n", data_class.getLightStatus(), data_class.getPumpStatus(), data_class.getCoolerStatus(), data_class.getHeaterStatus(), data_class.getHumidStatus(), data_class.getDehumidStatus());
 
 String parseDataToSend()
 {
@@ -168,94 +170,6 @@ void getNow()
   rtc.checkSync();
 }
 
-
-void asyncFirebaseDataSend()
-{
-    // intervalo total desejado (ms)
-    const unsigned long INTERVAL_MS = 5000;
-
-    // guarda quando terminou o último ciclo (inicialmente 0)
-    static unsigned long lastSend = 0;
-
-    unsigned long now = millis();
-    if (now - lastSend < INTERVAL_MS) {
-        return; // ainda não chegou a hora de ler/enviar novamente
-    }
-
-    // --- Faça as leituras UMA vez por ciclo ---
-    String temp       = String(data_class.getTemp());
-    String humid      = String(data_class.getHumid());
-    String soil       = String(data_class.getSoil());
-    String light      = String(data_class.getLightStatus());
-    String pump       = String(data_class.getPumpStatus());
-    String cooler     = String(data_class.getCoolerStatus());
-    String heater     = String(data_class.getHeaterStatus());
-    String humidSt    = String(data_class.getHumidStatus());
-    String dehumidSt  = String(data_class.getDehumidStatus());
-
-    // --- Últimos valores enviados (persistem entre chamadas) ---
-    static String lastTemp       = "";
-    static String lastHumid      = "";
-    static String lastSoil       = "";
-    static String lastLight      = "";
-    static String lastPump       = "";
-    static String lastCooler     = "";
-    static String lastHeater     = "";
-    static String lastHumidSt    = "";
-    static String lastDehumidSt  = "";
-
-    // --- Comparações e envios (só quando mudar) ---
-    if (temp != lastTemp) {
-        firebase->aSyncSet(safeEmail + "/Readings/Sensor/Temperature", temp);
-        lastTemp = temp;
-    }
-
-    if (humid != lastHumid) {
-        firebase->aSyncSet(safeEmail + "/Readings/Sensor/Humidity", humid);
-        lastHumid = humid;
-    }
-
-    if (soil != lastSoil) {
-        firebase->aSyncSet(safeEmail + "/Readings/Sensor/Soil", soil);
-        lastSoil = soil;
-    }
-
-    if (light != lastLight) {
-        firebase->aSyncSet(safeEmail + "/Readings/Actuator/LightStatus", light);
-        lastLight = light;
-    }
-
-    if (pump != lastPump) {
-        firebase->aSyncSet(safeEmail + "/Readings/Actuator/PumpStatus", pump);
-        lastPump = pump;
-    }
-
-    if (cooler != lastCooler) {
-        firebase->aSyncSet(safeEmail + "/Readings/Actuator/CoolerStatus", cooler);
-        lastCooler = cooler;
-    }
-
-    if (heater != lastHeater) {
-        firebase->aSyncSet(safeEmail + "/Readings/Actuator/HeaterStatus", heater);
-        lastHeater = heater;
-    }
-
-    if (humidSt != lastHumidSt) {
-        firebase->aSyncSet(safeEmail + "/Readings/Actuator/HumidStatus", humidSt);
-        lastHumidSt = humidSt;
-    }
-
-    if (dehumidSt != lastDehumidSt) {
-        firebase->aSyncSet(safeEmail + "/Readings/Actuator/DehumidStatus", dehumidSt);
-        lastDehumidSt = dehumidSt;
-    }
-
-    // --- Atualiza lastSend APÓS terminar todo o trabalho ---
-    lastSend = millis();
-}
-
-
-
 void setup() 
 {
 	Serial.begin(115200);
@@ -269,16 +183,25 @@ void setup()
 
 }
 
+String dataRead = "";
 
 void loop() 
 {
     wifi.loop();
     firebase->loop();
 	getNow();
-	sendData(parseDataToSend());
-  	parseReceivedData(readData().c_str());
-	asyncFirebaseDataSend();
+    
+    dataRead = readData();
+   
+    parseReceivedData(dataRead.c_str());
+    Serial.println(dataRead);
+    
 
+	sendData(parseDataToSend());
+	
+
+
+    
 	light.run(data_class.getIsRunning());
 	
 	display->menuSwitch(&menu);

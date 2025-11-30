@@ -10,7 +10,7 @@ class DataClass {
     
     private:
 
-        SemaphoreHandle_t dataMutex;
+      
 
         bool isRunning;
         
@@ -51,8 +51,6 @@ class DataClass {
     public:
 
         DataClass(Light *light);
-        ~DataClass();
-
 
         void setTemp(float temp);
         void setTargetTemp(float target_temp);
@@ -104,17 +102,15 @@ class DataClass {
         float getHumidRes();
         float getReservWarning();
 
-        float getLightStatus();
-        float getPumpStatus();
-        float getCoolerStatus();
-        float getHeaterStatus();
-        float getHumidStatus();
-        float getDehumidStatus();
+        bool getLightStatus();
+        bool getPumpStatus();
+        bool getCoolerStatus();
+        bool getHeaterStatus();
+        bool getHumidStatus();
+        bool getDehumidStatus();
 
         void setIsRunning(bool stats);
         bool getIsRunning();
 
-        bool lock(TickType_t timeout = portMAX_DELAY);
-        void unlock();
-
+       
 };

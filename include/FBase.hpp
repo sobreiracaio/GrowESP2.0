@@ -6,6 +6,8 @@
 #include <FirebaseClient.h>
 #include <WiFiClientSecure.h>
 
+
+
 #define API_KEY "AIzaSyBZOxkbUT3b9COdhCqNul3kNy6HEuSU5S4"
 #define DATABASE_URL "https://growstation-183df-default-rtdb.firebaseio.com"
 
@@ -13,6 +15,8 @@
 #define FLOAT 1
 #define STRING 2
 #define BOOL 3
+
+
 
 class FBase {
 
@@ -27,6 +31,8 @@ class FBase {
         WiFiClientSecure ssl_client;
         AsyncClientClass aClient;
         RealtimeDatabase Database;
+
+        
 
         bool authenticated;
 
@@ -45,7 +51,9 @@ class FBase {
         String awaitGet(String& path);
         void awaitSet(String &path, String value, int type);
 
-        void aSyncSet(String &path, String &value);
+        void aSyncSetString(String &path, String &value);
+        void aSyncSetFloat(String &path, float &value);
+        void aSyncSetBool(String &path, bool &value);
 
         void aSyncGet(String& path, String &result);
         static void asyncCallback(AsyncResult &aResult);

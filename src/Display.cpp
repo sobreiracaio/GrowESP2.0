@@ -60,8 +60,62 @@ void Display::qrScreen()
     display->drawSmoothRoundRect(220, 40, 5, 3, 240, 240, DARK_GREY, DARK_GREY);
     display->drawBitmap(230, 50, wifiqr, 220, 220, WHITE);
 }
+
+
+void Display::asyncSet()
+{
+     // intervalo total desejado (ms)
+    const unsigned long INTERVAL_MS = 30000;
+
+    // guarda quando terminou o último ciclo (inicialmente 0)
+    static unsigned long lastSend = 0;
+    
+    float temp       = dataClass->getTemp();
+    float humid      = dataClass->getHumid();
+    float soil       = dataClass->getSoil();
+
+    bool status = dataClass->getIsRunning();
+
+    bool statuses[6];
+	statuses[0] = dataClass->getLightStatus();
+	statuses[1] = dataClass->getPumpStatus();
+	statuses[2] = dataClass->getCoolerStatus();
+	statuses[3] = dataClass->getHeaterStatus();
+	statuses[4] = dataClass->getHumidStatus();
+	statuses[5] = dataClass->getDehumidStatus();
+
+      
+    
+    unsigned long now = millis();
+    if (now - lastSend < INTERVAL_MS) 
+    {
+        return; // ainda não chegou a hora de ler/enviar novamente
+    }
+
+
+    firebase->aSyncSetFloat(safeEmail + "/Readings/Sensor/Temperature", temp);
+    firebase->aSyncSetFloat(safeEmail + "/Readings/Sensor/Humidity", humid);
+    firebase->aSyncSetFloat(safeEmail + "/Readings/Sensor/Soil", soil);
+
+    firebase->aSyncSetBool(safeEmail + "/Readings/Actuator/LightStatus", statuses[0]);
+    firebase->aSyncSetBool(safeEmail + "/Readings/Actuator/PumpStatus", statuses[1]);
+    firebase->aSyncSetBool(safeEmail + "/Readings/Actuator/CoolerStatus", statuses[2]);
+    firebase->aSyncSetBool(safeEmail + "/Readings/Actuator/HeaterStatus", statuses[3]);
+    firebase->aSyncSetBool(safeEmail + "/Readings/Actuator/HumidStatus", statuses[4]);
+    firebase->aSyncSetBool(safeEmail + "/Readings/Actuator/DehumidStatus", statuses[5]);
+    firebase->aSyncSetBool(safeEmail + "/Status", status);
+
+
+
+    lastSend = millis();
+
+}
+
+
 void Display::mainScreen(float *menu)
 {
+    asyncSet();
+
     static float is_running = 0;
     if (*menu != 0)
         flushScreen();
@@ -74,6 +128,8 @@ void Display::mainScreen(float *menu)
 	drawArc(260 ,98, dataClass->getSoil(), dataClass->getTargetSoil(), 100, dataClass->getSoilTolerance(), "Solo" , "%");
     drawBar(20, 170, 180, 15, dataClass->getWaterRes(), dataClass->getReservWarning(), 100, 2, "Reserv. Rega", "%");
     drawBar(20, 218, 180, 15, dataClass->getHumidRes(), dataClass->getReservWarning(), 100, 2,  "Reserv. Umid.", "%");
+    
+
     
     actuatorDisplay();
 
@@ -120,6 +176,8 @@ void Display::adjustScreen(float *menu)
         btn[2]->read(&submenu, INCREMENT, 12, 0);
         btn[3]->read(&submenu, DECREMENT, 12, 0);
         dataClass->setDayTime(day[0], day[1]);
+        // dataClass->getDayTime(day);
+        // firebase->aSyncSet(safeEmail + "/InsertedData/Light/HourOn", )
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     }
@@ -920,6 +978,8 @@ void Display::actuatorDisplay()
                      " <-> " +
                      fmtNumber(nightH) + ":" + fmtNumber(nightM);
 
+    
+
 	// --- Labels ---
 	const char* labels[] = {
 	"Luz",
@@ -939,7 +999,7 @@ void Display::actuatorDisplay()
 	statuses[4] = dataClass->getHumidStatus();
 	statuses[5] = dataClass->getDehumidStatus();
 
-	// --- Posições e layout ---
+    // --- Posições e layout ---
 	int baseXLabel = 325;
 	int baseXValue = 450;
 	int baseY = 86;
@@ -1106,4 +1166,9 @@ void Display::drawAboutMenu()
     display->drawString("Versao do modulo : 101", 240, 170, 2);
     display->drawString("Instagram: @pagina", 240, 195, 2);
     display->setTextDatum(TL_DATUM);
+}
+
+void Display::injectFBase(FBase *firebase)
+{
+    this->firebase = firebase;
 }
