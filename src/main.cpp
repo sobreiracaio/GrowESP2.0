@@ -33,6 +33,7 @@ OTA ota(&prefs);
 
 struct tm now = {0};
 String safeEmail = "";
+String status = "";
 
 float menu = 0;
 
@@ -46,6 +47,8 @@ void initClasses()
 	display = new Display(tft, firebase, &rtc, &ota, &wifi, button, &data_class); 
 	wifi.injectDisplay(display);
 }
+
+void fireBaseLoadData();
 
 void initModules()
 {
@@ -66,6 +69,7 @@ void initModules()
     while (!firebase->init())
         display->connectionScreen("Atualizando banco de dados", "     Aguarde...     ");
     firebase->awaitSet(safeEmail + "/Pass", wifi.getPass(), STRING);
+    fireBaseLoadData();
 	
 
 }
@@ -109,6 +113,8 @@ void fireBaseLoadData()
     String absDelay = "";
     String soilTol = "";
 
+    
+
     firebase->awaitGet(safeEmail + "/InsertedData/Light/HourOn", &dayTime);
     //Serial.printf("Daytime: %s\n",dayTime.c_str());
     formatDate(&dayTime, DAY);
@@ -140,6 +146,11 @@ void fireBaseLoadData()
     firebase->awaitGet(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance", &soilTol);
     data_class.setSoilTolerance(soilTol.toFloat());
 
+    firebase->awaitGet(safeEmail + "/Status", &status);
+    if (status == "true")
+        data_class.setIsRunning(true);
+    else
+        data_class.setIsRunning(false);
 }
 
 void parseReceivedData(const char *receivedData)
@@ -237,7 +248,7 @@ void setup()
 	Serial1.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
 	initClasses();
 	initModules();
-    fireBaseLoadData();
+    
 	light.setTimeFunction(getNow);
 
 
@@ -262,7 +273,7 @@ void loop()
 	sendData(parseDataToSend());
 	
 
-
+   
     
 	light.run(data_class.getIsRunning());
 	

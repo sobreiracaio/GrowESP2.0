@@ -115,7 +115,7 @@ void Display::asyncSet()
 void Display::mainScreen(float *menu)
 {
     
-    static float is_running = 0;
+    static float is_running = dataClass->getIsRunning();
     if (*menu != 0)
     flushScreen();
     
