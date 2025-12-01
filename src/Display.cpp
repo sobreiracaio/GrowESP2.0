@@ -171,49 +171,104 @@ void Display::adjustScreen(float *menu)
 
     case 1:
     {
+        static float tmpDay[2] = {0};
+        static String hour = "";
         topScreen("Ajustes", BOTH, BLACK);
         btn[0]->read(&day[0], DECREMENT, 23, 0);
         btn[1]->read(&day[0], INCREMENT, 23, 0);
-        btn[2]->read(&submenu, INCREMENT, 12, 0);
-        btn[3]->read(&submenu, DECREMENT, 12, 0);
-        dataClass->setDayTime(day[0], day[1]);
-        // dataClass->getDayTime(day);
-        // firebase->aSyncSet(safeEmail + "/InsertedData/Light/HourOn", )
+        if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+        {
+            dataClass->setDayTime(day[0], day[1]);
+            dataClass->getDayTime(tmpDay);
+            hour = (tmpDay[0] < 10 ? "0" + String((int)tmpDay[0]) : String((int)tmpDay[0]))  + ":" + (tmpDay[1] < 10 ? "0" + String((int)tmpDay[1]) : String((int)tmpDay[1]));
+            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hour);
+        }
+        if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+        {
+            dataClass->setDayTime(day[0], day[1]);
+            dataClass->getDayTime(tmpDay);
+            hour = (tmpDay[0] < 10 ? "0" + String((int)tmpDay[0]) : String((int)tmpDay[0]))  + ":" + (tmpDay[1] < 10 ? "0" + String((int)tmpDay[1]) : String((int)tmpDay[1]));
+            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hour);
+        }
+        
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     }
     
     case 2:
     {
+        static float tmpDay[2] = {0};
+        static String hour = "";
         topScreen("Ajustes", BOTH, BLACK);
         btn[0]->read(&day[1], DECREMENT, 59, 0);
         btn[1]->read(&day[1], INCREMENT, 59, 0);
-        btn[2]->read(&submenu, INCREMENT, 12, 0);
-        btn[3]->read(&submenu, DECREMENT, 12, 0);
-        dataClass->setDayTime(day[0], day[1]);
+        if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+        {
+            dataClass->setDayTime(day[0], day[1]);
+            dataClass->getDayTime(tmpDay);
+            hour = (tmpDay[0] < 10 ? "0" + String((int)tmpDay[0]) : String((int)tmpDay[0]))  + ":" + (tmpDay[1] < 10 ? "0" + String((int)tmpDay[1]) : String((int)tmpDay[1]));
+            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hour);
+        }
+        if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+        {
+            dataClass->setDayTime(day[0], day[1]);
+            dataClass->getDayTime(tmpDay);
+            hour = (tmpDay[0] < 10 ? "0" + String((int)tmpDay[0]) : String((int)tmpDay[0]))  + ":" + (tmpDay[1] < 10 ? "0" + String((int)tmpDay[1]) : String((int)tmpDay[1]));
+            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hour);
+        }
+        
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     }
         
     case 3:
+    {
+        static float tmpNight[2] = {0};
+        static String hour = "";
         topScreen("Ajustes", BOTH, BLACK);
         btn[0]->read(&night[0], DECREMENT, 23, 0);
         btn[1]->read(&night[0], INCREMENT, 23, 0);
-        btn[2]->read(&submenu, INCREMENT, 12, 0);
-        btn[3]->read(&submenu, DECREMENT, 12, 0);
-        dataClass->setNightTime(night[0], night[1]);
+        if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+        {
+            dataClass->setNightTime(night[0], night[1]);
+            dataClass->getNightTime(tmpNight);
+            hour = (tmpNight[0] < 10 ? "0" + String((int)tmpNight[0]) : String((int)tmpNight[0]))  + ":" + (tmpNight[1] < 10 ? "0" + String((int)tmpNight[1]) : String((int)tmpNight[1]));
+            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hour);
+        }
+        if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+        {
+            dataClass->setNightTime(night[0], night[1]);
+            dataClass->getNightTime(tmpNight);
+            hour = (tmpNight[0] < 10 ? "0" + String((int)tmpNight[0]) : String((int)tmpNight[0]))  + ":" + (tmpNight[1] < 10 ? "0" + String((int)tmpNight[1]) : String((int)tmpNight[1]));
+            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hour);
+        }
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
-    
+    }
     case 4:
+    {
+        static float tmpNight[2] = {0};
+        static String hour = "";
         topScreen("Ajustes", BOTH, BLACK);
         btn[0]->read(&night[1], DECREMENT, 59, 0);
         btn[1]->read(&night[1], INCREMENT, 59, 0);
-        btn[2]->read(&submenu, INCREMENT, 12, 0);
-        btn[3]->read(&submenu, DECREMENT, 12, 0);
-        dataClass->setNightTime(night[0], night[1]);
+        if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+        {
+            dataClass->setNightTime(night[0], night[1]);
+            dataClass->getNightTime(tmpNight);
+            hour = (tmpNight[0] < 10 ? "0" + String((int)tmpNight[0]) : String((int)tmpNight[0]))  + ":" + (tmpNight[1] < 10 ? "0" + String((int)tmpNight[1]) : String((int)tmpNight[1]));
+            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hour);
+        }
+        if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+        {
+            dataClass->setNightTime(night[0], night[1]);
+            dataClass->getNightTime(tmpNight);
+            hour = (tmpNight[0] < 10 ? "0" + String((int)tmpNight[0]) : String((int)tmpNight[0]))  + ":" + (tmpNight[1] < 10 ? "0" + String((int)tmpNight[1]) : String((int)tmpNight[1]));
+            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hour);
+        }
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
+    }
         
     case 5:
     {
@@ -225,8 +280,12 @@ void Display::adjustScreen(float *menu)
         
         dataClass->setTargetTemp(value);
         
-        btn[2]->read(&submenu, INCREMENT, 12, 0);
-        btn[3]->read(&submenu, DECREMENT, 12, 0);
+        if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp", value);
+
+        if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp", value);
+       
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     }
@@ -237,11 +296,15 @@ void Display::adjustScreen(float *menu)
         value = dataClass->getTempTolerance();
         btn[0]->read(&value, DECREMENT, 10, 0, 0, 0.5);
         btn[1]->read(&value, INCREMENT, 10, 0, 0, 0.5);
-
+        
         dataClass->setTempTolerance(value);
 
-        btn[2]->read(&submenu, INCREMENT, 12, 0);
-        btn[3]->read(&submenu, DECREMENT, 12, 0);
+        if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", value);
+
+        if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", value);
+        
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     }
@@ -255,9 +318,11 @@ void Display::adjustScreen(float *menu)
 
         dataClass->setTargetHumid(value);
 
+        if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid", value);
 
-        btn[2]->read(&submenu, INCREMENT, 12, 0);
-        btn[3]->read(&submenu, DECREMENT, 12, 0);
+        if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid", value);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     }
@@ -270,8 +335,11 @@ void Display::adjustScreen(float *menu)
 
         dataClass->setHumidTolerance(value);
 
-        btn[2]->read(&submenu, INCREMENT, 12, 0);
-        btn[3]->read(&submenu, DECREMENT, 12, 0);
+        if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance", value);
+
+        if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance", value);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     }
@@ -284,8 +352,11 @@ void Display::adjustScreen(float *menu)
 
         dataClass->setTargetSoil(value);
 
-        btn[2]->read(&submenu, INCREMENT, 12, 0);
-        btn[3]->read(&submenu, DECREMENT, 12, 0);
+        if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil", value);
+
+        if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil", value);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     }
@@ -298,8 +369,11 @@ void Display::adjustScreen(float *menu)
 
         dataClass->setPumpDuration(value);
 
-        btn[2]->read(&submenu, INCREMENT, 12, 0);
-        btn[3]->read(&submenu, DECREMENT, 12, 0);
+        if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", value);
+
+        if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", value);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     }
@@ -312,8 +386,11 @@ void Display::adjustScreen(float *menu)
 
         dataClass->setAbsorptionDelay(value);
 
-        btn[2]->read(&submenu, INCREMENT, 12, 0);
-        btn[3]->read(&submenu, DECREMENT, 12, 0);
+        if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", value);
+
+        if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", value);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     }
@@ -326,8 +403,11 @@ void Display::adjustScreen(float *menu)
 
         dataClass->setSoilTolerance(value);
 
-        btn[2]->read(menu, DECREMENT, 10, 0);
-        btn[3]->read(&submenu, DECREMENT, 12, 0);
+        if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance", value);
+
+        if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance", value);
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     }
