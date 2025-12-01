@@ -23,7 +23,7 @@
 #define BOTH -1
 
 extern String safeEmail;
-extern String status;
+
 class WifiManager;
 class Time;
 class FBase;

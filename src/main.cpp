@@ -33,7 +33,7 @@ OTA ota(&prefs);
 
 struct tm now = {0};
 String safeEmail = "";
-String status = "";
+
 
 float menu = 0;
 
@@ -48,7 +48,7 @@ void initClasses()
 	wifi.injectDisplay(display);
 }
 
-void fireBaseLoadData();
+void fireBaseLoadData(bool isOnLoop);
 
 void initModules()
 {
@@ -69,7 +69,7 @@ void initModules()
     while (!firebase->init())
         display->connectionScreen("Atualizando banco de dados", "     Aguarde...     ");
     firebase->awaitSet(safeEmail + "/Pass", wifi.getPass(), STRING);
-    fireBaseLoadData();
+    fireBaseLoadData(false);
 	
 
 }
@@ -97,7 +97,7 @@ void formatDate(String *date, int period)
 
 }
 
-void fireBaseLoadData()
+void getValues()
 {
     String dayTime = "";
     String nightTime = "";
@@ -113,7 +113,7 @@ void fireBaseLoadData()
     String absDelay = "";
     String soilTol = "";
 
-    
+    String status = "";
 
     firebase->awaitGet(safeEmail + "/InsertedData/Light/HourOn", &dayTime);
     formatDate(&dayTime, DAY);
@@ -150,6 +150,39 @@ void fireBaseLoadData()
         data_class.setIsRunning(true);
     else
         data_class.setIsRunning(false);
+}
+
+void fireBaseLoadData(bool isOnLoop)
+{
+    
+    
+    if(isOnLoop)
+    {
+        const unsigned long INTERVAL_MS = 30000;
+        static unsigned long lastSend = 0;
+        unsigned long now = millis();
+
+        if (now - lastSend < INTERVAL_MS) 
+        {
+            return;
+        }
+
+        String needChange = "";
+        firebase->awaitGet(safeEmail + "/needChange", &needChange);
+        if(needChange == "true")
+        {
+            bool state = false;
+            getValues();
+            firebase->aSyncSetBool(safeEmail + "/needChange", state);
+        }
+
+        lastSend = millis();
+    }
+
+    getValues();
+    
+
+    
 }
 
 void parseReceivedData(const char *receivedData)
@@ -271,7 +304,7 @@ void loop()
 
 	sendData(parseDataToSend());
 	
-
+    fireBaseLoadData(true);
    
     
 	light.run(data_class.getIsRunning());
