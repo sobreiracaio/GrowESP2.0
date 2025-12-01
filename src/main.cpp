@@ -77,12 +77,12 @@ void initModules()
 void formatDate(String *date, int period)
 {
      int colonIndex = date->indexOf(':');
-    //if (colonIndex == -1) return; // formato inválido
-    //Serial.printf("Antes da formatacao: %s\n", date);
+    if (colonIndex == -1) return; // formato inválido
+   
     float hour = date->substring(0, colonIndex).toFloat();
     float minute = date->substring(colonIndex + 1).toFloat();
 
-    //Serial.printf("Hora: %d, Min: %d\n", hour, minute);
+  
 
     if(period == DAY)
     {
@@ -116,7 +116,6 @@ void fireBaseLoadData()
     
 
     firebase->awaitGet(safeEmail + "/InsertedData/Light/HourOn", &dayTime);
-    //Serial.printf("Daytime: %s\n",dayTime.c_str());
     formatDate(&dayTime, DAY);
 
     firebase->awaitGet(safeEmail + "/InsertedData/Light/HourOff", &nightTime);
@@ -166,7 +165,7 @@ void parseReceivedData(const char *receivedData)
 
     // Variáveis temporárias para cada sensor
     static float temp = 0.0f, humid = 0.0f, soil = 0.0f;
-    static bool light = 0, pump = 0, cooler = 0, heater = 0, humidifier = 0, dehumidifier = 0;
+    bool light = 0, pump = 0, cooler = 0, heater = 0, humidifier = 0, dehumidifier = 0;
 
     // Formato esperado: "T:25.5 H:60.2 S:45.0 L:1 P:0 C:1 He:0 Hu:1 DHu:0"
     int parsed = sscanf(receivedData,
@@ -267,7 +266,7 @@ void loop()
     dataRead = readData();
    
     parseReceivedData(dataRead.c_str());
-    //Serial.println(dataRead);
+    Serial.println(dataRead);
     
 
 	sendData(parseDataToSend());
