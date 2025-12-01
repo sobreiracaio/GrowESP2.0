@@ -100,8 +100,8 @@ void FBase::aSyncGet(String& path, String &result)
 
     // salva onde o callback deve escrever
     asyncTarget = &result;
-
     Database.get(aClient, path.c_str(), asyncCallback, false, "aSyncGetTask");
+
 }
 
 
@@ -132,14 +132,14 @@ void FBase::aSyncSetBool(String &path, bool &value)
     
 }
 
-String FBase::awaitGet(String& path)
+void FBase::awaitGet(String& path, String *result)
 {
-    if (!isReady()) return "";
-    String res = "";
+    if (!isReady()) return;
+    
 
-    res = Database.get(aClient, path.c_str());
+    *result = Database.get(aClient, path.c_str());
 
-    return res;
+   
 }
 void FBase::awaitSet(String &path, String value, int type)
 {

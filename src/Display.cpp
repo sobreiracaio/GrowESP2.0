@@ -130,28 +130,28 @@ void Display::mainScreen(float *menu)
     
     
     
-    asyncSet();
     
     actuatorDisplay();
-
+    
     if (btn[1]->read(menu, INCREMENT, 10, 0))
-                flushScreen();
-                
-                
+    flushScreen();
+    
+    
     if(dataClass->getIsRunning() == false)
     {
         btn[2]->read(&is_running, CHANGE_STATE, 1, 0);
         dataClass->setIsRunning(is_running);
-
+        
         bottomScreen(" ", ">", "Iniciar", "             ");
     }
     else
     {
         btn[3]->read(&is_running, CHANGE_STATE, 1, 0);
         dataClass->setIsRunning(is_running);
-
+        
         bottomScreen(" ", ">", "                ", "Parar");
     }
+    asyncSet();
 }
 void Display::adjustScreen(float *menu)
 {
@@ -171,7 +171,8 @@ void Display::adjustScreen(float *menu)
 
     case 1:
     {
-        static float tmpDay[2] = {0};
+        
+        dataClass->getDayTime(day);
         static String hour = "";
         topScreen("Ajustes", BOTH, BLACK);
         btn[0]->read(&day[0], DECREMENT, 23, 0);
@@ -179,15 +180,15 @@ void Display::adjustScreen(float *menu)
         if(btn[2]->read(&submenu, INCREMENT, 12, 0))
         {
             dataClass->setDayTime(day[0], day[1]);
-            dataClass->getDayTime(tmpDay);
-            hour = (tmpDay[0] < 10 ? "0" + String((int)tmpDay[0]) : String((int)tmpDay[0]))  + ":" + (tmpDay[1] < 10 ? "0" + String((int)tmpDay[1]) : String((int)tmpDay[1]));
+            dataClass->getDayTime(day);
+            hour = (day[0] < 10 ? "0" + String((int)day[0]) : String((int)day[0]))  + ":" + (day[1] < 10 ? "0" + String((int)day[1]) : String((int)day[1]));
             firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hour);
         }
         if(btn[3]->read(&submenu, DECREMENT, 12, 0))
         {
             dataClass->setDayTime(day[0], day[1]);
-            dataClass->getDayTime(tmpDay);
-            hour = (tmpDay[0] < 10 ? "0" + String((int)tmpDay[0]) : String((int)tmpDay[0]))  + ":" + (tmpDay[1] < 10 ? "0" + String((int)tmpDay[1]) : String((int)tmpDay[1]));
+            dataClass->getDayTime(day);
+            hour = (day[0] < 10 ? "0" + String((int)day[0]) : String((int)day[0]))  + ":" + (day[1] < 10 ? "0" + String((int)day[1]) : String((int)day[1]));
             firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hour);
         }
         
@@ -197,7 +198,8 @@ void Display::adjustScreen(float *menu)
     
     case 2:
     {
-        static float tmpDay[2] = {0};
+        
+        dataClass->getDayTime(day);
         static String hour = "";
         topScreen("Ajustes", BOTH, BLACK);
         btn[0]->read(&day[1], DECREMENT, 59, 0);
@@ -205,15 +207,15 @@ void Display::adjustScreen(float *menu)
         if(btn[2]->read(&submenu, INCREMENT, 12, 0))
         {
             dataClass->setDayTime(day[0], day[1]);
-            dataClass->getDayTime(tmpDay);
-            hour = (tmpDay[0] < 10 ? "0" + String((int)tmpDay[0]) : String((int)tmpDay[0]))  + ":" + (tmpDay[1] < 10 ? "0" + String((int)tmpDay[1]) : String((int)tmpDay[1]));
+            dataClass->getDayTime(day);
+            hour = (day[0] < 10 ? "0" + String((int)day[0]) : String((int)day[0]))  + ":" + (day[1] < 10 ? "0" + String((int)day[1]) : String((int)day[1]));
             firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hour);
         }
         if(btn[3]->read(&submenu, DECREMENT, 12, 0))
         {
             dataClass->setDayTime(day[0], day[1]);
-            dataClass->getDayTime(tmpDay);
-            hour = (tmpDay[0] < 10 ? "0" + String((int)tmpDay[0]) : String((int)tmpDay[0]))  + ":" + (tmpDay[1] < 10 ? "0" + String((int)tmpDay[1]) : String((int)tmpDay[1]));
+            dataClass->getDayTime(day);
+            hour = (day[0] < 10 ? "0" + String((int)day[0]) : String((int)day[0]))  + ":" + (day[1] < 10 ? "0" + String((int)day[1]) : String((int)day[1]));
             firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hour);
         }
         
@@ -223,7 +225,8 @@ void Display::adjustScreen(float *menu)
         
     case 3:
     {
-        static float tmpNight[2] = {0};
+        
+        dataClass->getNightTime(night);
         static String hour = "";
         topScreen("Ajustes", BOTH, BLACK);
         btn[0]->read(&night[0], DECREMENT, 23, 0);
@@ -231,15 +234,15 @@ void Display::adjustScreen(float *menu)
         if(btn[2]->read(&submenu, INCREMENT, 12, 0))
         {
             dataClass->setNightTime(night[0], night[1]);
-            dataClass->getNightTime(tmpNight);
-            hour = (tmpNight[0] < 10 ? "0" + String((int)tmpNight[0]) : String((int)tmpNight[0]))  + ":" + (tmpNight[1] < 10 ? "0" + String((int)tmpNight[1]) : String((int)tmpNight[1]));
+            dataClass->getNightTime(night);
+            hour = (night[0] < 10 ? "0" + String((int)night[0]) : String((int)night[0]))  + ":" + (night[1] < 10 ? "0" + String((int)night[1]) : String((int)night[1]));
             firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hour);
         }
         if(btn[3]->read(&submenu, DECREMENT, 12, 0))
         {
             dataClass->setNightTime(night[0], night[1]);
-            dataClass->getNightTime(tmpNight);
-            hour = (tmpNight[0] < 10 ? "0" + String((int)tmpNight[0]) : String((int)tmpNight[0]))  + ":" + (tmpNight[1] < 10 ? "0" + String((int)tmpNight[1]) : String((int)tmpNight[1]));
+            dataClass->getNightTime(night);
+            hour = (night[0] < 10 ? "0" + String((int)night[0]) : String((int)night[0]))  + ":" + (night[1] < 10 ? "0" + String((int)night[1]) : String((int)night[1]));
             firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hour);
         }
         bottomScreen("-", "+", "    OK    ", "Voltar");
@@ -247,7 +250,8 @@ void Display::adjustScreen(float *menu)
     }
     case 4:
     {
-        static float tmpNight[2] = {0};
+       
+        dataClass->getNightTime(night);
         static String hour = "";
         topScreen("Ajustes", BOTH, BLACK);
         btn[0]->read(&night[1], DECREMENT, 59, 0);
@@ -255,15 +259,15 @@ void Display::adjustScreen(float *menu)
         if(btn[2]->read(&submenu, INCREMENT, 12, 0))
         {
             dataClass->setNightTime(night[0], night[1]);
-            dataClass->getNightTime(tmpNight);
-            hour = (tmpNight[0] < 10 ? "0" + String((int)tmpNight[0]) : String((int)tmpNight[0]))  + ":" + (tmpNight[1] < 10 ? "0" + String((int)tmpNight[1]) : String((int)tmpNight[1]));
+            dataClass->getNightTime(night);
+            hour = (night[0] < 10 ? "0" + String((int)night[0]) : String((int)night[0]))  + ":" + (night[1] < 10 ? "0" + String((int)night[1]) : String((int)night[1]));
             firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hour);
         }
         if(btn[3]->read(&submenu, DECREMENT, 12, 0))
         {
             dataClass->setNightTime(night[0], night[1]);
-            dataClass->getNightTime(tmpNight);
-            hour = (tmpNight[0] < 10 ? "0" + String((int)tmpNight[0]) : String((int)tmpNight[0]))  + ":" + (tmpNight[1] < 10 ? "0" + String((int)tmpNight[1]) : String((int)tmpNight[1]));
+            dataClass->getNightTime(night);
+            hour = (night[0] < 10 ? "0" + String((int)night[0]) : String((int)night[0]))  + ":" + (night[1] < 10 ? "0" + String((int)night[1]) : String((int)night[1]));
             firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hour);
         }
         bottomScreen("-", "+", "    OK    ", "Voltar");

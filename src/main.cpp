@@ -70,22 +70,77 @@ void initModules()
 
 }
 
-// void loadFirebaseStruct()
-// {
-//     // firebase->awaitSet(safeEmail + "/InsertedData/Light/HourOn", "", STRING);
-//     // firebase->awaitSet(safeEmail + "/InsertedData/Light/HourOff", "", STRING);
+void formatDate(String *date, int period)
+{
+     int colonIndex = date->indexOf(':');
+    //if (colonIndex == -1) return; // formato inválido
+    //Serial.printf("Antes da formatacao: %s\n", date);
+    float hour = date->substring(0, colonIndex).toFloat();
+    float minute = date->substring(colonIndex + 1).toFloat();
 
-//     // firebase->awaitSet(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp", "", STRING);
-//     // firebase->awaitSet(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", "", STRING);
+    //Serial.printf("Hora: %d, Min: %d\n", hour, minute);
 
-//     // firebase->awaitSet(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid", "", STRING);
-//     // firebase->awaitSet(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance", "", STRING);
+    if(period == DAY)
+    {
+        data_class.setDayTime(hour, minute);
+        
+    }
+    if(period == NIGHT)
+    {
+        data_class.setNightTime(hour, minute);
+        
+    }
 
-//     // firebase->awaitSet(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil", "", STRING);
-//     // firebase->awaitSet(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", "", STRING);
-//     // firebase->awaitSet(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", "", STRING);
-//     // firebase->awaitSet(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance", "", STRING);
-// }
+}
+
+void fireBaseLoadData()
+{
+    String dayTime = "";
+    String nightTime = "";
+
+    String targetTemp = "";
+    String tempTol = "";
+
+    String targetHumid = "";
+    String humidTol = "";
+
+    String targetSoil = "";
+    String pumpDur = "";
+    String absDelay = "";
+    String soilTol = "";
+
+    firebase->awaitGet(safeEmail + "/InsertedData/Light/HourOn", &dayTime);
+    Serial.printf("Daytime: %s\n", dayTime);
+    formatDate(&dayTime, DAY);
+
+    firebase->awaitGet(safeEmail + "/InsertedData/Light/HourOff", &nightTime);
+    formatDate(&nightTime, NIGHT);
+
+    firebase->awaitGet(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp", &targetTemp);
+    data_class.setTargetTemp(targetTemp.toFloat());
+
+    firebase->awaitGet(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", &tempTol);
+    data_class.setTempTolerance(tempTol.toFloat());
+
+    firebase->awaitGet(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid", &targetHumid);
+    data_class.setTargetHumid(targetHumid.toFloat());
+
+    firebase->awaitGet(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance", &humidTol);
+    data_class.setHumidTolerance(humidTol.toFloat());
+
+    firebase->awaitGet(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil", &targetSoil);
+    data_class.setTargetSoil(targetSoil.toFloat());
+
+    firebase->awaitGet(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", &pumpDur);
+    data_class.setPumpDuration(pumpDur.toFloat());
+
+    firebase->awaitGet(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", &absDelay);
+    data_class.setAbsorptionDelay(absDelay.toFloat());
+
+    firebase->awaitGet(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance", &soilTol);
+    data_class.setSoilTolerance(soilTol.toFloat());
+
+}
 
 void parseReceivedData(const char *receivedData)
 {
@@ -182,7 +237,7 @@ void setup()
 	Serial1.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
 	initClasses();
 	initModules();
-    //loadFirebaseStruct();
+    fireBaseLoadData();
 	light.setTimeFunction(getNow);
 
 
@@ -201,7 +256,7 @@ void loop()
     dataRead = readData();
    
     parseReceivedData(dataRead.c_str());
-    Serial.println(dataRead);
+    //Serial.println(dataRead);
     
 
 	sendData(parseDataToSend());

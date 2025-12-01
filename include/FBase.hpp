@@ -48,7 +48,7 @@ class FBase {
         bool isReady();
         void loop();
 
-        String awaitGet(String& path);
+        void awaitGet(String& path, String *result);
         void awaitSet(String &path, String value, int type);
 
         void aSyncSetString(String &path, String &value);

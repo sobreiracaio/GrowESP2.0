@@ -1,7 +1,7 @@
 #pragma once
 
-//FIREBASE DEFINITIONS
-
+#define DAY 0
+#define NIGHT 1
 
 
 
