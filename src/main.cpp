@@ -156,7 +156,13 @@ String readData()
 
 void sendData(String data)
 {
+    static String lastData = "";
+
+	if(data.equals(lastData))
+		return;
+
 	Serial1.print(data);
+    lastData = data;
 }
 
 void getNow()
@@ -187,6 +193,7 @@ String dataRead = "";
 
 void loop() 
 {
+	display->menuSwitch(&menu);
     wifi.loop();
     firebase->loop();
 	getNow();
@@ -204,6 +211,5 @@ void loop()
     
 	light.run(data_class.getIsRunning());
 	
-	display->menuSwitch(&menu);
 	
 }
