@@ -137,8 +137,8 @@ void FBase::awaitGet(String& path, String *result)
     if (!isReady()) return;
     
 
-    *result = Database.get(aClient, path.c_str());
-
+    *result = Database.get<String>(aClient, path.c_str());
+    //Serial.printf("Result is: %s\n", *result);
    
 }
 void FBase::awaitSet(String &path, String value, int type)

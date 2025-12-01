@@ -110,7 +110,7 @@ void fireBaseLoadData()
     String soilTol = "";
 
     firebase->awaitGet(safeEmail + "/InsertedData/Light/HourOn", &dayTime);
-    Serial.printf("Daytime: %s\n", dayTime);
+    //Serial.printf("Daytime: %s\n",dayTime.c_str());
     formatDate(&dayTime, DAY);
 
     firebase->awaitGet(safeEmail + "/InsertedData/Light/HourOff", &nightTime);
