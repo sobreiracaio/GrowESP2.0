@@ -35,7 +35,8 @@ struct tm now = {0};
 String safeEmail = "";
 
 
-float menu = 0;
+float menu = 1;
+bool initDevice = false;
 
 void initClasses()
 {
@@ -177,6 +178,7 @@ void fireBaseLoadData(bool isOnLoop)
         }
 
         lastSend = millis();
+        return;
     }
 
     getValues();
@@ -283,14 +285,26 @@ void setup()
     
 	light.setTimeFunction(getNow);
 
-
-
+    initDevice = true;
+    display->flushScreen();
 }
 
 String dataRead = "";
 
 void loop() 
 {
+    Serial.printf("Menu is: %d\n", menu);
+    if(button[0]->getIdle() && button[1]->getIdle() && button[2]->getIdle() && button[3]->getIdle() && initDevice)
+        {
+            //display->flushScreen();
+            display->fadeScreenOff(); 
+            menu = 0;
+            display->asyncSet();
+           
+        }
+        else if(!button[0]->getIdle() || !button[1]->getIdle() || !button[2]->getIdle() || !button[3]->getIdle())
+            display->fadeScreenOn();
+
 	display->menuSwitch(&menu);
     wifi.loop();
     firebase->loop();
@@ -299,8 +313,11 @@ void loop()
     dataRead = readData();
    
     parseReceivedData(dataRead.c_str());
-    Serial.println(dataRead);
-    
+    //Serial.println(dataRead);
+    // Serial.printf("Ta ocioso? : %d\n", button[0]->getIdle());
+    // Serial.printf("Ta ocioso? : %d\n", button[1]->getIdle());
+    // Serial.printf("Ta ocioso? : %d\n", button[2]->getIdle());
+    // Serial.printf("Ta ocioso? : %d\n", button[3]->getIdle());
 
 	sendData(parseDataToSend());
 	

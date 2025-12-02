@@ -43,7 +43,7 @@ class Display {
         Button **btn;
         DataClass *dataClass;
 
-        void asyncSet();
+        
         
         void bottomScreen(String t1, String t2, String t3, String t4);
         void topScreen(String label, int arrowSetup, int color = WHITE);
@@ -65,6 +65,9 @@ class Display {
         float day[2];
         float night[2];
 
+        static int duty;
+        
+
 
         public:
         Display(TFT_eSPI *tft, FBase *fbase, Time *time, OTA *OTA, WifiManager *wifi_manager, Button **button, DataClass *data_class);
@@ -81,5 +84,10 @@ class Display {
         void flushScreen();
 
         void injectFBase(FBase *firebase);
+
+        void fadeScreenOff();
+        void fadeScreenOn();
+
+        void asyncSet();
        
 };

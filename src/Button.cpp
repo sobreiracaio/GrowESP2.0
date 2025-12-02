@@ -14,7 +14,10 @@
 #include "Button.hpp"
 
 Button::Button(uint8_t pin_number) : pin(pin_number), lastReading(false), stableState(false),
-    lastDebounceTime(0), pressStartTime(0) {}
+    lastDebounceTime(0), pressStartTime(0), isIdle(false) 
+    {
+        lastActivity = millis();
+    }
 
 
 void Button::init()
@@ -30,7 +33,7 @@ uint8_t Button::getPin()
 
 bool Button::read(float *value, int operation, float upper_limit, float lower_limit, unsigned long holdTime, float step)
 {
-    const unsigned long debounceDelay = 100;
+    const unsigned long debounceDelay = 150;
     bool currentReading = !digitalRead(pin);
     unsigned long now = millis();
 
@@ -44,10 +47,11 @@ bool Button::read(float *value, int operation, float upper_limit, float lower_li
             stableState = currentReading;
 
             // DETECÇÃO DA BORDA DE SUBIDA (botão pressionado agora)
-            if (stableState) {
+            if (stableState) 
+            {
                 pressStartTime = now;
 
-        
+                idleButton();
                 
                 // Se não há tempo mínimo, executa imediatamente
                 if (holdTime == 0) {
@@ -108,4 +112,22 @@ bool Button::read(float *value, int operation, float upper_limit, float lower_li
 bool Button::getState()
 {
     return (digitalRead(pin));
+}
+
+void Button::idleButton()
+{
+    lastActivity = millis();
+    isIdle = false;
+}
+
+bool Button::getIdle()
+{
+    unsigned long now = millis();
+    
+    // Se não teve atividade por tempo suficiente → idle
+    if (!isIdle && (now - lastActivity > idleTimeout)) {
+        isIdle = true;
+    }
+
+    return isIdle;
 }

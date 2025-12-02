@@ -1,12 +1,13 @@
 #include "Display.hpp"
 
 Display::Display(TFT_eSPI *tft, FBase *fbase, Time *time, OTA *ota, WifiManager *wifi_manager, Button **button, DataClass *data_class) :
-                    display(tft), firebase(fbase), rtc(time), ota(ota), wifi(wifi_manager), btn(button), dataClass(data_class)
+                    display(tft), firebase(fbase), rtc(time), ota(ota), wifi(wifi_manager), btn(button), dataClass(data_class) 
                     {
                         day[0] = 0;
                         day[1] = 0;
                         night[0] = 0;
                         night[1] = 0;
+                        
                     }
 
 bool Display::initDisplay()
@@ -16,7 +17,8 @@ bool Display::initDisplay()
 
     ledcAttachPin(TFT_BL, 0);
     ledcSetup(0, 5000, 8);
-    ledcWrite(0, 255);
+    
+    ledcWrite(0, 0);
 
     display->fillScreen(BLACK);
     return true;
@@ -25,6 +27,7 @@ bool Display::initDisplay()
 void Display::initLogoScreen()
 {
     display->drawBitmap(130, 43, logo, 220, 235, WHITE);
+    ledcWrite(0, 255);
     delay(3000);
     display->fillScreen(BLACK);
 }
@@ -65,7 +68,7 @@ void Display::qrScreen()
 void Display::asyncSet()
 {
      // intervalo total desejado (ms)
-    const unsigned long INTERVAL_MS = 30000;
+    const unsigned long INTERVAL_MS = 60000;
 
     // guarda quando terminou o último ciclo (inicialmente 0)
     static unsigned long lastSend = 0;
@@ -114,10 +117,10 @@ void Display::asyncSet()
 
 void Display::mainScreen(float *menu)
 {
-    
+    float dummy_value =0;
     static float is_running = dataClass->getIsRunning();
-    if (*menu != 0)
-    flushScreen();
+    if (*menu != 1)
+        flushScreen();
     
     topScreen("Painel Principal", RIGHT);
     
@@ -132,26 +135,31 @@ void Display::mainScreen(float *menu)
     
     
     actuatorDisplay();
-    
+
+    if (btn[0]->read(&dummy_value, -1, 1, 0));
+
     if (btn[1]->read(menu, INCREMENT, 10, 0))
-    flushScreen();
+        flushScreen();
     
     
     if(dataClass->getIsRunning() == false)
     {
         btn[2]->read(&is_running, CHANGE_STATE, 1, 0);
+        btn[3]->read(&dummy_value, -1, 1, 0);
         dataClass->setIsRunning(is_running);
         
         bottomScreen(" ", ">", "Iniciar", "             ");
     }
     else
     {
+        btn[2]->read(&dummy_value, -1, 1, 0);
         btn[3]->read(&is_running, CHANGE_STATE, 1, 0);
         dataClass->setIsRunning(is_running);
         
         bottomScreen(" ", ">", "                ", "Parar");
     }
-    asyncSet();
+    
+    
 }
 void Display::adjustScreen(float *menu)
 {
@@ -708,10 +716,52 @@ void Display::confScreen(float *menu)
         }
 }
 
+int Display::duty = 0;
+
+void Display::fadeScreenOff()
+{
+    const unsigned long interval = 1; 
+    static unsigned long lastStep = 0;
+    unsigned long now = millis();
+
+    if (now - lastStep >= interval) {
+        lastStep = now;
+
+        if (duty > 0) {
+            duty -= 25;
+            duty < 0 ? duty = 0 : duty = duty;
+            ledcWrite(0, duty);
+        }
+    }
+}
+
+void Display::fadeScreenOn()
+{
+    const unsigned long interval = 1; 
+    static unsigned long lastStep = 0;
+    unsigned long now = millis();
+
+    if (now - lastStep >= interval) {
+        lastStep = now;
+
+        if (duty < 255) {
+            duty += 25 ;
+            duty > 255 ? duty = 255 : duty = duty;
+            ledcWrite(0, duty);
+        }
+    }
+}
+
 
 void Display::menuSwitch(float *menu)
 {
     static float lastmenu = -1;
+    
+    // Serial.printf("Lastmenu: %d\n", lastmenu);
+    // Serial.printf("Menu: %d\n", *menu);
+    
+        
+    
     if(lastmenu != *menu)
     {
         flushScreen();
@@ -722,18 +772,23 @@ void Display::menuSwitch(float *menu)
     {
         case 0:
         {
+            for(int i = 0; i < 4; i++)
+                btn[i]->read(menu,INCREMENT, 10, 0);
+            break;
+        }
+        case 1:
+        {
             mainScreen(menu);
-            
             break;
         }
 
-        case 1:
+        case 2:
         {
             adjustScreen(menu);
             break;
         }
         
-        case 2:
+        case 3:
         {
             confScreen(menu);
             break;
