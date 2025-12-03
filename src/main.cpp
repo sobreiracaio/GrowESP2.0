@@ -32,9 +32,7 @@ OTA ota(&prefs);
 
 
 struct tm now = {0};
-
 String safeEmail = "";
-String dataRead = "";
 
 
 float menu = 1;
@@ -247,21 +245,12 @@ String parseDataToSend()
 
 String readData()
 {
-    static unsigned long lastRead = 0; // guarda a última vez que leu
-
-    // Verifica se já passaram 5 segundos
-    if (millis() - lastRead >= 5000)
+    if (Serial1.available()) 
     {
-        lastRead = millis(); // atualiza o timestamp
-
-        if (Serial1.available())
-        {
-            // Retorna o objeto String lido até '\n'
-            return Serial1.readStringUntil('\n');
-        }
+        // Retorna o objeto String. O chamador é responsável por gerenciar a memória
+        return Serial1.readStringUntil('\n');
     }
-
-    // Retorna String vazia se ainda não deu 5 segundos ou não houver dados
+    // Retorna String vazia, não o ponteiro vazio, o que é mais seguro.
     return "";
 }
 
@@ -300,7 +289,7 @@ void setup()
     display->flushScreen();
 }
 
-
+String dataRead = "";
 
 void loop() 
 {
@@ -324,7 +313,11 @@ void loop()
     dataRead = readData();
    
     parseReceivedData(dataRead.c_str());
-    
+    //Serial.println(dataRead);
+    // Serial.printf("Ta ocioso? : %d\n", button[0]->getIdle());
+    // Serial.printf("Ta ocioso? : %d\n", button[1]->getIdle());
+    // Serial.printf("Ta ocioso? : %d\n", button[2]->getIdle());
+    // Serial.printf("Ta ocioso? : %d\n", button[3]->getIdle());
 
 	sendData(parseDataToSend());
 	

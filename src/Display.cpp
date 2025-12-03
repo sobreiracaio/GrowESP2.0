@@ -1012,7 +1012,11 @@ void Display::drawArcGauge(int x, int y, float value, float targetValue, float c
 {
 	float angle = map(value, 0, ceiling_value, 0, 270);
     float targetAngle1  = map(targetValue - tolerance, 0, ceiling_value, 0, 270);
+    if(targetAngle1 < 0)
+        targetAngle1 = 0;
     float targetAngle2  = map(targetValue + tolerance, 0, ceiling_value, 0, 270);
+    if(targetAngle2 > 270)
+        targetAngle2 = 270;
 	float step = 2;
 	int radius = 43;
 
@@ -1056,6 +1060,10 @@ void Display::drawBar(int x, int y, int width, int height, float value, float ta
     float measure = map(value, 0, ceiling_value, 0, width);
     float targetPos = map(targetValue, 0, ceiling_value, 0, width);
     float toleranceWidth = map(tolerance, 0, ceiling_value, 0, width);
+    if(toleranceWidth < 0)
+        toleranceWidth = 0;
+    if(toleranceWidth > width)
+        toleranceWidth = width;
     
     float step = 2;
     
@@ -1063,8 +1071,8 @@ void Display::drawBar(int x, int y, int width, int height, float value, float ta
     display->setTextColor(WHITE, BLACK);
     display->setTextDatum(TL_DATUM);
     
-    String fValue = value < 10 ? "0" + String(value, 1) : String(value, 1);
-    String fTarget = targetValue < 10 ? "0" + String(targetValue, 1) : String(targetValue, 1);
+    String fValue = String(value, 1);
+    String fTarget = String(targetValue, 1);
     
     // Label abaixo da barra
     display->drawString(label, x, y + height + 5, 2);
