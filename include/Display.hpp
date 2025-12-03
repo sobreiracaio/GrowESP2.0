@@ -76,6 +76,7 @@ class Display {
         void connectionScreen(String note, String note1);
         void qrScreen();
         void mainScreen(float *menu);
+        
         void adjustScreen(float *menu);
         void confScreen(float *menu);
 

@@ -33,7 +33,7 @@ uint8_t Button::getPin()
 
 bool Button::read(float *value, int operation, float upper_limit, float lower_limit, unsigned long holdTime, float step)
 {
-    const unsigned long debounceDelay = 150;
+    const unsigned long debounceDelay = 50;
     bool currentReading = !digitalRead(pin);
     unsigned long now = millis();
 

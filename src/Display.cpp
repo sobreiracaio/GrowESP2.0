@@ -165,6 +165,8 @@ void Display::adjustScreen(float *menu)
 {
     static float submenu = 0;
     float value = 0;
+
+    
     
     switch ((int)submenu)   
     {
@@ -530,12 +532,8 @@ void Display::confScreen(float *menu)
     float dummy_value = 0;
     static float lastSubmenu = -1;
     
-
+   
     
-
-    
-        
-
     switch (int(submenu))
     {
         case 0:
