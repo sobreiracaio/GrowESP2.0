@@ -172,11 +172,12 @@ void fireBaseLoadData(bool isOnLoop)
         firebase->awaitGet(safeEmail + "/needChange", &needChange);
         if(needChange == "true")
         {
+            Serial1.end();
             bool state = false;
             getValues();
             firebase->aSyncSetBool(safeEmail + "/needChange", state);
+            Serial1.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
         }
-
         lastSend = millis();
         return;
     }
@@ -258,8 +259,8 @@ void sendData(String data)
 {
     static String lastData = "";
 
-	if(data.equals(lastData))
-		return;
+	// if(data.equals(lastData))
+	// 	return;
 
 	Serial1.print(data);
     lastData = data;
@@ -282,13 +283,16 @@ void checkActivity()
         {
             //display->flushScreen();
             display->fadeScreenOff(); 
-            menu = 0;
             display->asyncSet();
+            menu = 0;
            
         }
         else if(!button[0]->getIdle() || !button[1]->getIdle() || !button[2]->getIdle() || !button[3]->getIdle())
             display->fadeScreenOn();
 }
+
+String dataRead = "";
+String dataToSend = "";
 
 void setup() 
 {
@@ -301,9 +305,9 @@ void setup()
 
     initDevice = true;
     display->flushScreen();
+
 }
 
-String dataRead = "";
 
 void loop() 
 {
@@ -316,12 +320,13 @@ void loop()
 	getNow();
     
     dataRead = readData();
+    dataToSend = parseDataToSend();
    
     parseReceivedData(dataRead.c_str());
-    //Serial.println(dataRead);
-   
-
-	sendData(parseDataToSend());
+    
+    
+	sendData(dataToSend);
+    //Serial.println(dataToSend);
 	
     fireBaseLoadData(true);
    
