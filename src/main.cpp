@@ -263,7 +263,7 @@ void sendData(String data)
 	// 	return;
 
 	Serial1.print(data);
-    //Serial1.flush();
+    Serial1.flush();
     lastData = data;
 }
 
@@ -283,8 +283,10 @@ void checkActivity()
     if(button[0]->getIdle() && button[1]->getIdle() && button[2]->getIdle() && button[3]->getIdle() && initDevice)
         {
             //display->flushScreen();
-            display->fadeScreenOff(); 
+            display->fadeScreenOff();
+            
             display->asyncSet();
+            
             menu = 0;
            
         }
@@ -312,21 +314,22 @@ void setup()
 
 void loop() 
 {
-   
+    
     checkActivity();
+  
 
 	display->menuSwitch(&menu);
     wifi.loop();
     firebase->loop();
 	getNow();
-    
+
+    //Serial1.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
     dataRead = readData();
     dataToSend = parseDataToSend();
-   
+    sendData(dataToSend);
+    //Serial1.end(); 
+    
     parseReceivedData(dataRead.c_str());
-    
-    
-	sendData(dataToSend);
     //Serial.println(dataToSend);
 	
     fireBaseLoadData(true);

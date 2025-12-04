@@ -95,7 +95,7 @@ void Display::asyncSet()
         return; // ainda não chegou a hora de ler/enviar novamente
     }
 
-    Serial1.end();
+   
     firebase->aSyncSetFloat(safeEmail + "/Readings/Sensor/Temperature", temp);
     firebase->aSyncSetFloat(safeEmail + "/Readings/Sensor/Humidity", humid);
     firebase->aSyncSetFloat(safeEmail + "/Readings/Sensor/Soil", soil);
@@ -107,7 +107,7 @@ void Display::asyncSet()
     firebase->aSyncSetBool(safeEmail + "/Readings/Actuator/HumidStatus", statuses[4]);
     firebase->aSyncSetBool(safeEmail + "/Readings/Actuator/DehumidStatus", statuses[5]);
     firebase->aSyncSetBool(safeEmail + "/Status", status);
-    Serial1.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
+    
 
 
     lastSend = millis();
