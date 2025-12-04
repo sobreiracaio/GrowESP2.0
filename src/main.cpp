@@ -263,6 +263,7 @@ void sendData(String data)
 	// 	return;
 
 	Serial1.print(data);
+    //Serial1.flush();
     lastData = data;
 }
 
