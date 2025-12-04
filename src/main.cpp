@@ -276,6 +276,20 @@ void getNow()
   rtc.checkSync();
 }
 
+void checkActivity()
+{
+    if(button[0]->getIdle() && button[1]->getIdle() && button[2]->getIdle() && button[3]->getIdle() && initDevice)
+        {
+            //display->flushScreen();
+            display->fadeScreenOff(); 
+            menu = 0;
+            display->asyncSet();
+           
+        }
+        else if(!button[0]->getIdle() || !button[1]->getIdle() || !button[2]->getIdle() || !button[3]->getIdle())
+            display->fadeScreenOn();
+}
+
 void setup() 
 {
 	Serial.begin(115200);
@@ -293,17 +307,8 @@ String dataRead = "";
 
 void loop() 
 {
-    Serial.printf("Menu is: %d\n", menu);
-    if(button[0]->getIdle() && button[1]->getIdle() && button[2]->getIdle() && button[3]->getIdle() && initDevice)
-        {
-            //display->flushScreen();
-            display->fadeScreenOff(); 
-            menu = 0;
-            display->asyncSet();
-           
-        }
-        else if(!button[0]->getIdle() || !button[1]->getIdle() || !button[2]->getIdle() || !button[3]->getIdle())
-            display->fadeScreenOn();
+   
+    checkActivity();
 
 	display->menuSwitch(&menu);
     wifi.loop();
@@ -314,10 +319,7 @@ void loop()
    
     parseReceivedData(dataRead.c_str());
     //Serial.println(dataRead);
-    // Serial.printf("Ta ocioso? : %d\n", button[0]->getIdle());
-    // Serial.printf("Ta ocioso? : %d\n", button[1]->getIdle());
-    // Serial.printf("Ta ocioso? : %d\n", button[2]->getIdle());
-    // Serial.printf("Ta ocioso? : %d\n", button[3]->getIdle());
+   
 
 	sendData(parseDataToSend());
 	

@@ -732,7 +732,7 @@ void Display::fadeScreenOff()
         lastStep = now;
 
         if (duty > 0) {
-            duty -= 25;
+            duty -= 15;
             duty < 0 ? duty = 0 : duty = duty;
             ledcWrite(0, duty);
         }
@@ -749,7 +749,7 @@ void Display::fadeScreenOn()
         lastStep = now;
 
         if (duty < 255) {
-            duty += 25 ;
+            duty += 15 ;
             duty > 255 ? duty = 255 : duty = duty;
             ledcWrite(0, duty);
         }
