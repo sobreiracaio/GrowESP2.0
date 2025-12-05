@@ -144,18 +144,21 @@ void Display::mainScreen(float *menu)
     
     if(dataClass->getIsRunning() == false)
     {
-        btn[2]->read(&is_running, CHANGE_STATE, 1, 0);
+        if (btn[2]->read(&is_running, CHANGE_STATE, 1, 0))
+            sendPacket(STATUS0, is_running);
+
         btn[3]->read(&dummy_value, -1, 1, 0);
         dataClass->setIsRunning(is_running);
+        
         
         bottomScreen(" ", ">", "Iniciar", "             ");
     }
     else
     {
         btn[2]->read(&dummy_value, -1, 1, 0);
-        btn[3]->read(&is_running, CHANGE_STATE, 1, 0);
+        if(btn[3]->read(&is_running, CHANGE_STATE, 1, 0))
+            sendPacket(STATUS0, is_running);
         dataClass->setIsRunning(is_running);
-        
         bottomScreen(" ", ">", "                ", "Parar");
     }
     
@@ -195,6 +198,7 @@ void Display::adjustScreen(float *menu)
             //dataClass->getDayTime(day);
             hour = (day[0] < 10 ? "0" + String((int)day[0]) : String((int)day[0]))  + ":" + (day[1] < 10 ? "0" + String((int)day[1]) : String((int)day[1]));
             firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hour);
+            
         }
         if(btn[3]->read(&submenu, DECREMENT, 12, 0))
         {
@@ -301,10 +305,16 @@ void Display::adjustScreen(float *menu)
         dataClass->setTargetTemp(value);
         
         if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+        {
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp", value);
+            sendPacket(TT, value); 
+        }
 
         if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+        {
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp", value);
+            sendPacket(TT, value);
+        }
        
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
@@ -320,10 +330,16 @@ void Display::adjustScreen(float *menu)
         dataClass->setTempTolerance(value);
 
         if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+        {
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", value);
+            sendPacket(TTOL, value);
+        }
 
         if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+        {
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", value);
+            sendPacket(TTOL, value);
+        }
         
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
@@ -339,10 +355,16 @@ void Display::adjustScreen(float *menu)
         dataClass->setTargetHumid(value);
 
         if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+        {
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid", value);
+            sendPacket(TH, value);
+        }
 
         if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+        {
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid", value);
+            sendPacket(TH, value);
+        }
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     }
@@ -356,10 +378,16 @@ void Display::adjustScreen(float *menu)
         dataClass->setHumidTolerance(value);
 
         if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+        {
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance", value);
+            sendPacket(HTOL, value);
+        }
 
         if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+        {
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance", value);
+            sendPacket(HTOL, value);
+        }
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     }
@@ -373,10 +401,16 @@ void Display::adjustScreen(float *menu)
         dataClass->setTargetSoil(value);
 
         if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+        {
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil", value);
+            sendPacket(TS, value);
+        }
 
         if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+        {
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil", value);
+            sendPacket(TS, value);
+        }
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     }
@@ -390,10 +424,17 @@ void Display::adjustScreen(float *menu)
         dataClass->setPumpDuration(value);
 
         if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+        {
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", value);
+            sendPacket(PD, value);
+        }
 
         if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+        {
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", value);
+            sendPacket(PD, value);
+
+        }
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     }
@@ -407,10 +448,16 @@ void Display::adjustScreen(float *menu)
         dataClass->setAbsorptionDelay(value);
 
         if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+        {
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", value);
+            sendPacket(AD, value);
+        }
 
         if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+        {
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", value);
+            sendPacket(AD, value);
+        }
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     }
@@ -424,10 +471,16 @@ void Display::adjustScreen(float *menu)
         dataClass->setSoilTolerance(value);
 
         if(btn[2]->read(&submenu, INCREMENT, 12, 0))
+        {
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance", value);
+            sendPacket(STOL, value);
+        }
 
         if(btn[3]->read(&submenu, DECREMENT, 12, 0))
+        {
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance", value);
+            sendPacket(STOL, value);
+        }
         bottomScreen("-", "+", "    OK    ", "Voltar");
         break;
     }

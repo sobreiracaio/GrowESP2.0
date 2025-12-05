@@ -9,6 +9,7 @@
 #include "DataClass.hpp"
 #include "OTA.hpp"
 #include "Light.hpp"
+#include "Serial.hpp"
 
 //Libraries
 
@@ -188,84 +189,6 @@ void fireBaseLoadData(bool isOnLoop)
     
 }
 
-void parseReceivedData(const char *receivedData)
-{
-    static char lastData[128] = "";
-
-    if (strcmp(receivedData, lastData) == 0)
-        return;
-
-    // Cópia segura da nova string recebida
-    strncpy(lastData, receivedData, sizeof(lastData) - 1);
-    lastData[sizeof(lastData) - 1] = '\0';
-
-    // Variáveis temporárias para cada sensor
-    static float temp = 0.0f, humid = 0.0f, soil = 0.0f;
-    bool light = 0, pump = 0, cooler = 0, heater = 0, humidifier = 0, dehumidifier = 0;
-
-    // Formato esperado: "T:25.5 H:60.2 S:45.0 L:1 P:0 C:1 He:0 Hu:1 DHu:0"
-    int parsed = sscanf(receivedData,
-                        "T:%f H:%f S:%f L:%d P:%d C:%d He:%d Hu:%d DHu:%d",
-                        &temp, &humid, &soil,
-                        &light, &pump, &cooler, &heater, &humidifier, &dehumidifier);
-
-    if (parsed >= 3)
-    {
-        data_class.setTemp(temp);
-        data_class.setHumid(humid);
-        data_class.setSoil(soil);
-
-        if (parsed >= 4) data_class.setLightStatus(light);
-        if (parsed >= 5) data_class.setPumpStatus(pump);
-        if (parsed >= 6) data_class.setCoolerStatus(cooler);
-        if (parsed >= 7) data_class.setHeaterStatus(heater);
-        if (parsed >= 8) data_class.setHumidStatus(humidifier);
-        if (parsed >= 9) data_class.setDehumidStatus(dehumidifier);
-    }
-}
-
-//Serial.printf("L:%d P:%d C:%d He:%d Hu:%d DHu:%d\n", data_class.getLightStatus(), data_class.getPumpStatus(), data_class.getCoolerStatus(), data_class.getHeaterStatus(), data_class.getHumidStatus(), data_class.getDehumidStatus());
-
-String parseDataToSend()
-{
-  String res;
-  res  = "TT: "   + String(data_class.getTargetTemp()) ;
-  res += " TTol: " + String(data_class.getTempTolerance()) ;
-  res += " TH: "   + String(data_class.getTargetHumid()) ;
-  res += " HTol: " + String(data_class.getHumidTolerance()) ;
-  res += " TS: "   + String(data_class.getTargetSoil()) ;
-  res += " STol: " + String(data_class.getSoilTolerance()) ;
-  res += " PD: "   + String(data_class.getPumpDuration()) ;
-  res += " AD: "   + String(data_class.getAbsorptionDelay()) ;
-  res += " L: "    + String(data_class.getIsRunning() ? light.getStatus() : false);
-  res += " STATUS: " + String(data_class.getIsRunning());
-  res += "\n";
-
-  return res;
-}
-
-String readData()
-{
-    if (Serial1.available()) 
-    {
-        // Retorna o objeto String. O chamador é responsável por gerenciar a memória
-        return Serial1.readStringUntil('\n');
-    }
-    // Retorna String vazia, não o ponteiro vazio, o que é mais seguro.
-    return "";
-}
-
-void sendData(String data)
-{
-    static String lastData = "";
-
-	// if(data.equals(lastData))
-	// 	return;
-
-	Serial1.print(data);
-    Serial1.flush();
-    lastData = data;
-}
 
 void getNow()
 {
@@ -294,8 +217,6 @@ void checkActivity()
             display->fadeScreenOn();
 }
 
-String dataRead = "";
-String dataToSend = "";
 
 void setup() 
 {
@@ -309,6 +230,20 @@ void setup()
     initDevice = true;
     display->flushScreen();
 
+    float lightValue = data_class.getIsRunning() ? light.getStatus() : 0;
+    uint8_t arrID[10] = {TT, TTOL, TH, HTOL, TS, STOL, PD, AD, LIGHT0, STATUS0};
+    float arrVal[10] = {data_class.getTargetTemp(), data_class.getTempTolerance(), data_class.getTargetHumid(), data_class.getHumidTolerance(),
+                        data_class.getTargetSoil(), data_class.getSoilTolerance(), data_class.getPumpDuration(), data_class.getAbsorptionDelay(),
+                        lightValue, (float)data_class.getIsRunning()};
+    
+     const int count = sizeof(arrID) / sizeof(arrID[0]);
+    
+    for (int i = 0; i < count; i++)
+    {    
+            sendPacket(arrID[i], arrVal[i]);
+            delay(500);
+    }
+    
 }
 
 
@@ -323,19 +258,32 @@ void loop()
     firebase->loop();
 	getNow();
 
-    //Serial1.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
-    dataRead = readData();
-    dataToSend = parseDataToSend();
-    sendData(dataToSend);
-    //Serial1.end(); 
+    //  if(Serial1.available() > 0) {
+    //     Serial.printf("🔔 Bytes disponíveis no Serial1: %d\n", Serial1.available());
+    // }
     
-    parseReceivedData(dataRead.c_str());
-    //Serial.println(dataToSend);
+    // ✅ Lê TODOS os pacotes disponíveis
+    while(Serial1.available() >= 5) {
+        int result = readPacket(&data_class);
+        if (result < 0) {
+            Serial.printf("❌ Erro ao ler pacote do Pico: %d\n", result);
+        }
+    }
+   
+    light.run(data_class.getIsRunning());
+    
+    
+   
+    
+   
+
+
+    
+   
+   
 	
     fireBaseLoadData(true);
    
-    
-	light.run(data_class.getIsRunning());
 	
 	
 }

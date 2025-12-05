@@ -14,3 +14,5 @@
 //OTHERS
 #define ON true
 #define OFF false
+
+//ID CODES FOR VALUES FOR SENDING ON SERIAL
