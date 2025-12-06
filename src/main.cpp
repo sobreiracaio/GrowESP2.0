@@ -269,6 +269,20 @@ void loop()
             Serial.printf("❌ Erro ao ler pacote do Pico: %d\n", result);
         }
     }
+
+    float lightValue = data_class.getIsRunning() ? light.getStatus() : 0;
+    // uint8_t arrID[10] = {TT, TTOL, TH, HTOL, TS, STOL, PD, AD, LIGHT0, STATUS0};
+    // float arrVal[10] = {data_class.getTargetTemp(), data_class.getTempTolerance(), data_class.getTargetHumid(), data_class.getHumidTolerance(),
+    //                     data_class.getTargetSoil(), data_class.getSoilTolerance(), data_class.getPumpDuration(), data_class.getAbsorptionDelay(),
+    //                     lightValue, (float)data_class.getIsRunning()};
+    
+    //  const int count = sizeof(arrID) / sizeof(arrID[0]);
+    
+    // for (int i = 0; i < count; i++)
+    // {    
+    //         sendPacket(arrID[i], arrVal[i]);
+    //         delay(100);
+    // }
    
     light.run(data_class.getIsRunning());
     

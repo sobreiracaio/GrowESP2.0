@@ -9,8 +9,9 @@ void sendPacket(uint8_t id, float value)
     static unsigned long lastSendTime = 0;
     
     // Se for o mesmo pacote em menos de 100ms, ignora
-    if(id == lastID && value == lastValue && millis() - lastSendTime < 100) {
-        Serial.printf("⏭️  Pulando envio duplicado ID:0x%02X\n", id);
+    if(id == lastID && value == lastValue && millis())// - lastSendTime < 100) 
+    {
+        //Serial.printf("⏭️  Pulando envio duplicado ID:0x%02X\n", id);
         return;
     }
     
@@ -27,8 +28,8 @@ void sendPacket(uint8_t id, float value)
 
     uint8_t checksum = (HEADER + id + high + low) & 0xFF;
 
-    Serial.printf("📤 Enviando ID:0x%02X Val:%.2f Raw:0x%02X%02X Chk:0x%02X\n", 
-                  id, value, high, low, checksum);
+    // Serial.printf("📤 Enviando ID:0x%02X Val:%.2f Raw:0x%02X%02X Chk:0x%02X\n", 
+    //               id, value, high, low, checksum);
 
     Serial1.write(HEADER);
     Serial1.write(id);
@@ -46,11 +47,11 @@ int readPacket(DataClass *data_class)
     uint8_t header = Serial1.read();
     
     // ✅ DEBUG: Veja o que está chegando
-    Serial.print("📥 ESP32 - Header:0x");
-    Serial.print(header, HEX);
-    Serial.print(" (esperado:0x");
-    Serial.print(HEADER, HEX);
-    Serial.println(")");
+    // Serial.print("📥 ESP32 - Header:0x");
+    // Serial.print(header, HEX);
+    // Serial.print(" (esperado:0x");
+    // Serial.print(HEADER, HEX);
+    // Serial.println(")");
     
     if (header != HEADER) {
         Serial.printf("❌ Header inválido: 0x%02X\n", header);
@@ -66,8 +67,8 @@ int readPacket(DataClass *data_class)
     uint8_t low  = (uint8_t)Serial1.read();
     uint8_t checksum = (uint8_t)Serial1.read();
 
-    Serial.printf("   ID:0x%02X High:0x%02X Low:0x%02X Chk:0x%02X\n", 
-                  id, high, low, checksum);
+    // Serial.printf("   ID:0x%02X High:0x%02X Low:0x%02X Chk:0x%02X\n", 
+    //               id, high, low, checksum);
 
     uint8_t calc = (HEADER + id + high + low) & 0xFF;
     
@@ -79,7 +80,7 @@ int readPacket(DataClass *data_class)
     uint16_t value = ((uint16_t)high << 8) | low;
     float fvalue = (float)value / 100.0;
     
-    Serial.printf("✅ Pacote OK! ID:0x%02X Valor:%.2f\n", id, fvalue);
+    //Serial.printf("✅ Pacote OK! ID:0x%02X Valor:%.2f\n", id, fvalue);
 
     switch (id)
     {
