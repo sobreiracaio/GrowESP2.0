@@ -99,7 +99,7 @@ int readPacket(DataClass *data_class)
             Serial.printf("   -> SOIL definido: %.2f\n", fvalue);
             break;
         
-        case LIGHT0:
+        case LIGHT:
             data_class->setLightStatus((bool)fvalue);
             Serial.printf("   -> LIGHT0 definido: %d\n", (bool)fvalue);
             break;
