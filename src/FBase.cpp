@@ -36,15 +36,15 @@ FBase::FBase(const String& api, const String& db_url, const String& user_email, 
 
 
 bool FBase::init() {
-    Serial.println("\n=== 🔥 Inicializando Firebase ===");
-    Serial.printf("Firebase Client v%s\n", FIREBASE_CLIENT_VERSION);
+    //Serial.println("\n=== 🔥 Inicializando Firebase ===");
+    //Serial.printf("Firebase Client v%s\n", FIREBASE_CLIENT_VERSION);
     
     
     // Configurar SSL
     ssl_client.setInsecure();
     
     // Inicializar o app com autenticação
-    Serial.println("🔐 Autenticando...");
+    //Serial.println("🔐 Autenticando...");
     initializeApp(aClient, app, getAuth(user_auth), processData, "authTask");
     
     // Aguardar autenticação (máximo 30 segundos)
@@ -56,19 +56,19 @@ bool FBase::init() {
     }
     
     if (app.ready()) {
-        Serial.println("✅ Firebase autenticado com sucesso!");
+        //Serial.println("✅ Firebase autenticado com sucesso!");
         authenticated = true;
         
         // Inicializar Realtime Database
         app.getApp<RealtimeDatabase>(Database);
         Database.url(dbUrl.c_str());
         
-        Serial.println("✅ Realtime Database configurado!");
-        Serial.println("=================================\n");
+        //Serial.println("✅ Realtime Database configurado!");
+        //Serial.println("=================================\n");
         return true;
     } else {
-        Serial.println("❌ Erro na autenticação do Firebase!");
-        Serial.println("=================================\n");
+        //Serial.println("❌ Erro na autenticação do Firebase!");
+        //Serial.println("=================================\n");
         authenticated = false;
         return false;
     }

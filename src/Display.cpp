@@ -814,8 +814,8 @@ void Display::menuSwitch(float *menu)
 {
     static float lastmenu = -1;
     
-    // Serial.printf("Lastmenu: %d\n", lastmenu);
-    // Serial.printf("Menu: %d\n", *menu);
+    //Serial.printf("Lastmenu: %d\n", lastmenu);
+    //Serial.printf("Menu: %d\n", *menu);
     
         
     

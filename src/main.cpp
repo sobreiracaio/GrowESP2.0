@@ -9,7 +9,7 @@
 #include "DataClass.hpp"
 #include "OTA.hpp"
 #include "Light.hpp"
-#include "Serial.hpp"
+#include "//Serial.hpp"
 
 //Libraries
 
@@ -220,7 +220,7 @@ void checkActivity()
 
 void setup() 
 {
-	Serial.begin(115200);
+	//Serial.begin(115200);
 	Serial1.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
 	initClasses();
 	initModules();
@@ -258,32 +258,16 @@ void loop()
     firebase->loop();
 	getNow();
 
-    //  if(Serial1.available() > 0) {
-    //     Serial.printf("🔔 Bytes disponíveis no Serial1: %d\n", Serial1.available());
-    // }
-    
-    // ✅ Lê TODOS os pacotes disponíveis
     while(Serial1.available() >= 5) {
         int result = readPacket(&data_class);
         if (result < 0) {
-            Serial.printf("❌ Erro ao ler pacote do Pico: %d\n", result);
+            //Serial.printf("❌ Erro ao ler pacote do Pico: %d\n", result);
         }
     }
 
     float lightValue = data_class.getIsRunning() ? light.getStatus() : 0;
     sendPacket(LIGHT0, lightValue);
-    // uint8_t arrID[10] = {TT, TTOL, TH, HTOL, TS, STOL, PD, AD, LIGHT0, STATUS0};
-    // float arrVal[10] = {data_class.getTargetTemp(), data_class.getTempTolerance(), data_class.getTargetHumid(), data_class.getHumidTolerance(),
-    //                     data_class.getTargetSoil(), data_class.getSoilTolerance(), data_class.getPumpDuration(), data_class.getAbsorptionDelay(),
-    //                     lightValue, (float)data_class.getIsRunning()};
     
-    //  const int count = sizeof(arrID) / sizeof(arrID[0]);
-    
-    // for (int i = 0; i < count; i++)
-    // {    
-    //         sendPacket(arrID[i], arrVal[i]);
-    //         delay(100);
-    // }
    
     light.run(data_class.getIsRunning());
     

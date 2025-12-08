@@ -53,3 +53,8 @@ int OTA::getDigit(int position)
         return -1;
     }
 }
+
+int OTA::updateDevice()
+{
+    
+}

@@ -57,8 +57,8 @@ void WifiManager::startPortal()
     WiFi.mode(WIFI_AP);
     WiFi.softAP("GrowBox-Setup", "12345678");
     IPAddress IP = WiFi.softAPIP();
-    Serial.print("🌐 Portal ativo em: ");
-    Serial.println(IP);
+    //Serial.print("🌐 Portal ativo em: ");
+    //Serial.println(IP);
     
     display->qrScreen();
     dnsServer.start(53, "*", IP);
@@ -198,7 +198,7 @@ void WifiManager::loop()
     if (millis() - lastCheck > 10000) {
         lastCheck = millis();
         if (WiFi.status() != WL_CONNECTED) {
-            Serial.println("⚠️ Conexão perdida. Tentando reconectar...");
+            //Serial.println("⚠️ Conexão perdida. Tentando reconectar...");
             connectToWiFi();
         }
     }
@@ -218,14 +218,14 @@ void WifiManager::connectToWiFi()
     {
         if (millis() - lastPrint >= printInterval) 
         {
-            Serial.print(".");
+            //Serial.print(".");
             lastPrint = millis();
         }
 
         // Aqui você pode colocar outras tarefas não-bloqueantes
     }
 
-    Serial.println(WiFi.status() == WL_CONNECTED ? "\n✅ Reconectado!" : "\n❌ Falha ao reconectar.");
+    //Serial.println(WiFi.status() == WL_CONNECTED ? "\n✅ Reconectado!" : "\n❌ Falha ao reconectar.");
 }
 
  bool WifiManager::getStatus()

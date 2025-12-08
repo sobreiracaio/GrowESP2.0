@@ -9,11 +9,11 @@ bool Time::begin() {
     // Sincronização inicial via NTP
     
     configTime(gmtOffsetSec, daylightOffsetSec, ntpServer, ntpServer1);
-    Serial.println("Aguardando hora NTP...");
+    //Serial.println("Aguardando hora NTP...");
     while (!getLocalTime(&timeinfo)) {
-        Serial.print(".");
+        //Serial.print(".");
     }
-    Serial.println("\nHora sincronizada!");
+    //Serial.println("\nHora sincronizada!");
     return true;
 }
 

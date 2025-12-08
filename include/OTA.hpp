@@ -21,4 +21,6 @@ class OTA {
         int getSerialNum();
         void setDigit(int position, int value);
         int getDigit(int position);
+
+        int updateDevice();
 };
