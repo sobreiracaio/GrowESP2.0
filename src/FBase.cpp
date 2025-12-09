@@ -74,6 +74,15 @@ bool FBase::init() {
     }
 }
 
+bool FBase::stopApp()
+{
+    aClient.stopAsync(true);
+    //Database.resetApp();
+    deinitializeApp(app);
+    
+    return true;
+}
+
 void FBase::loop() {
     app.loop();
     Database.loop();

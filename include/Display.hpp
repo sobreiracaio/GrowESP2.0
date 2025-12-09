@@ -87,7 +87,7 @@ class Display {
 
         void injectFBase(FBase *firebase);
 
-        void fadeScreenOff();
+        bool fadeScreenOff();
         void fadeScreenOn();
 
         void asyncSet();

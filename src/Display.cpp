@@ -657,7 +657,9 @@ void Display::confScreen(float *menu)
             btn[0]->read(&submenu, DECREMENT, 8, 0);
             btn[1]->read(&submenu, INCREMENT, 8, 0);
             if(btn[2]->read(&dummy_value, -1, 1, 0))
-            {} // reinicia no modo atualizacao do sistema
+            {
+                ota->updateDevice();
+            } 
             btn[3]->read(&submenu, DECREMENT, 8, 0);
 
             bottomScreen("  <  ", "  >  ", "Atualizar", "Voltar");
@@ -775,7 +777,7 @@ void Display::confScreen(float *menu)
 
 int Display::duty = 0;
 
-void Display::fadeScreenOff()
+bool Display::fadeScreenOff()
 {
     const unsigned long interval = 1; 
     static unsigned long lastStep = 0;
@@ -790,6 +792,7 @@ void Display::fadeScreenOff()
             ledcWrite(0, duty);
         }
     }
+    return true;
 }
 
 void Display::fadeScreenOn()

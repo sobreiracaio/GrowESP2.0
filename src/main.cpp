@@ -29,7 +29,7 @@ FBase *firebase = NULL;
 Display *display = NULL;
 Button* button[4] = {NULL};
 DataClass data_class(&light);
-OTA ota(&prefs);
+OTA ota(&prefs, firebase, display);
 
 
 struct tm now = {0};
@@ -38,6 +38,9 @@ String safeEmail = "";
 
 float menu = 1;
 bool initDevice = false;
+bool isOTA = false;
+
+static bool firebase_running = true;
 
 void initClasses()
 {
@@ -67,12 +70,17 @@ void initModules()
     safeEmail.replace(".","_");
     firebase = new FBase(API_KEY, DATABASE_URL, wifi.getEmail(), wifi.getPass());
     display->injectFBase(firebase);
+    ota.injectFbase(firebase);
+    ota.injectDisplay(display);
     display->connectionScreen("Atualizando banco de dados", "     Aguarde...     ");
     while (!firebase->init())
+    {
         display->connectionScreen("Atualizando banco de dados", "     Aguarde...     ");
+        
+    }
     firebase->awaitSet(safeEmail + "/Pass", wifi.getPass(), STRING);
     fireBaseLoadData(false);
-	
+	firebase->stopApp();
 
 }
 
@@ -116,6 +124,19 @@ void getValues()
     String soilTol = "";
 
     String status = "";
+
+    String binaryUrl = "";
+    String binaryPath = "/_Binary";
+    String token = "";
+    String tokenPath = "/_Token";
+
+    firebase->awaitGet(binaryPath, &binaryUrl);
+    ota.setBinaryPath(binaryUrl);
+   
+
+    firebase->awaitGet(tokenPath, &token);
+    ota.setToken(token);
+    
 
     firebase->awaitGet(safeEmail + "/InsertedData/Light/HourOn", &dayTime);
     formatDate(&dayTime, DAY);
@@ -201,12 +222,23 @@ void getNow()
   rtc.checkSync();
 }
 
-void checkActivity()
+
+void checkActivity(bool isOTA)
 {
+    if(isOTA == true)
+    {
+        return;
+    }
     if(button[0]->getIdle() && button[1]->getIdle() && button[2]->getIdle() && button[3]->getIdle() && initDevice)
         {
-            //display->flushScreen();
-            display->fadeScreenOff();
+            if (display->fadeScreenOff())
+            {
+                if(firebase_running)
+                {
+                    if (firebase->init())
+                        firebase_running = false;
+                }
+            }
             
             display->asyncSet();
             
@@ -214,7 +246,11 @@ void checkActivity()
            
         }
         else if(!button[0]->getIdle() || !button[1]->getIdle() || !button[2]->getIdle() || !button[3]->getIdle())
+        {
+            firebase_running = true;
+            firebase->stopApp();
             display->fadeScreenOn();
+        }
 }
 
 
@@ -228,29 +264,29 @@ void setup()
 	light.setTimeFunction(getNow);
 
     initDevice = true;
-    display->flushScreen();
-
+    
     float lightValue = data_class.getIsRunning() ? light.getStatus() : 0;
     uint8_t arrID[10] = {TT, TTOL, TH, HTOL, TS, STOL, PD, AD, LIGHT0, STATUS0};
     float arrVal[10] = {data_class.getTargetTemp(), data_class.getTempTolerance(), data_class.getTargetHumid(), data_class.getHumidTolerance(),
-                        data_class.getTargetSoil(), data_class.getSoilTolerance(), data_class.getPumpDuration(), data_class.getAbsorptionDelay(),
-                        lightValue, (float)data_class.getIsRunning()};
-    
-     const int count = sizeof(arrID) / sizeof(arrID[0]);
-    
-    for (int i = 0; i < count; i++)
-    {    
+        data_class.getTargetSoil(), data_class.getSoilTolerance(), data_class.getPumpDuration(), data_class.getAbsorptionDelay(),
+        lightValue, (float)data_class.getIsRunning()};
+        
+        const int count = sizeof(arrID) / sizeof(arrID[0]);
+        
+        for (int i = 0; i < count; i++)
+        {    
             sendPacket(arrID[i], arrVal[i]);
             delay(500);
-    }
-    
+        }
+        
+        display->flushScreen();
 }
 
 
 void loop() 
 {
     
-    checkActivity();
+    checkActivity(isOTA);
   
 
 	display->menuSwitch(&menu);

@@ -45,6 +45,7 @@ class FBase {
 
         FBase(const String& api, const String& db_url, const String& user_email, const String& user_password);
         bool init();
+        bool stopApp();
         bool isReady();
         void loop();
 

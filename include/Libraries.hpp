@@ -4,7 +4,7 @@
 #include "Predefinitions.hpp"
 
 #include <Arduino.h>
-
+#include <ArduinoJson.h>
 
 #include <WiFi.h>
 
