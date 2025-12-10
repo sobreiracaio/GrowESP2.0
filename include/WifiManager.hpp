@@ -38,5 +38,7 @@ class WifiManager {
         String getEmail();
         String getPass();
 
+        int getSignalStrenght();
+
         void injectDisplay(Display *tft);
 };

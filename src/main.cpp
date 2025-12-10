@@ -132,6 +132,11 @@ void getValues()
     String hasOTA = "";
     String hasOTAPath = "/_HasUpdate";
 
+    String heapPath = "/_FreeMemory";
+    float heapsize = esp_get_free_heap_size();
+
+    firebase->aSyncSetFloat(heapPath, heapsize);
+
     firebase->awaitGet(binaryPath, &binaryUrl);
     ota.setBinaryPath(binaryUrl);
    

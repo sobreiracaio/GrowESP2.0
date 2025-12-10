@@ -660,6 +660,7 @@ void Display::confScreen(float *menu)
             btn[1]->read(&submenu, INCREMENT, 8, 0);
             if(btn[2]->read(&dummy_value, -1, 1, 0))
             {
+                OTAScreen("Atualizando...");
                 ota->updateDevice();
             } 
             btn[3]->read(&submenu, DECREMENT, 8, 0);
@@ -907,11 +908,23 @@ void Display::bottomScreen(String t1, String t2, String t3, String t4)
 
 void Display::OTAhasUpdate()
 {
-    display->drawRect(20, 5, 20, 16, WHITE);
+    int color = BLACK;
+
+    if (ota->getHasUpdate() == true)
+        color = WHITE;
+            
+    display->drawRect(44, 5, 20, 16, color);
 }
+
 void Display::wifiConnStatus()
 {
-    display->drawRect(44, 5, 20, 16, WHITE);
+    display->fillRect(20, 5, 5, 3, WHITE);
+    display->fillRect(26, 5, 5, 6, WHITE);
+    display->fillRect(32, 5, 5, 9, WHITE);
+    display->fillRect(38, 5, 5, 12, WHITE);
+    display->fillRect(44, 5, 5, 15, WHITE);
+    int wifiSignal = wifi->getSignalStrenght();
+    //display->drawRect(20, 5, 20, 16, WHITE);
 }
 
 void Display::showConnStatus()
@@ -1412,7 +1425,7 @@ void Display::OTAScreen(String note)
     flushScreen();
     display->setTextColor(WHITE, BLACK);
     display->setTextDatum(MC_DATUM);
-    display->drawString(note, 200, 240, 2);
+    display->drawString(note, 240, 240, 4);
 
     display->setTextDatum(TL_DATUM);
 }

@@ -235,3 +235,9 @@ void WifiManager::connectToWiFi()
     else
         return true;
  }
+
+
+ int WifiManager::getSignalStrenght()
+ {
+    return WiFi.RSSI();
+ }
