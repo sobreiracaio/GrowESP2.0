@@ -87,11 +87,22 @@ String OTA::getVersion()
     return version;
 }
 
+void OTA::setHasUpdate(bool status)
+{
+    hasUpdate = status;
+}
+
+bool OTA::getHasUpdate()
+{
+    return hasUpdate;
+}
+
 
 int OTA::updateDevice()
 {
     isOTA = true;
 
+    
     // Verificação do Firebase
     if(!firebase->stopApp())
     {
@@ -106,7 +117,8 @@ int OTA::updateDevice()
     HTTPClient https;
     if (!https.begin(client, binaryUrl))
     {
-        Serial.println("[OTA] Falha ao iniciar conexao");
+        display->OTAScreen("Falha ao iniciar conexao. Tente novamente.");
+        //Serial.println("[OTA] Falha ao iniciar conexao");
         isOTA = false;
         return -1;
     }
@@ -118,7 +130,8 @@ int OTA::updateDevice()
     int httpCode = https.GET();
     if (httpCode != HTTP_CODE_OK)
     {
-        Serial.printf("[OTA] HTTP erro ao buscar release: %d\n", httpCode);
+        display->OTAScreen("HTTP erro ao buscar release: " + httpCode);
+        //Serial.printf("[OTA] HTTP erro ao buscar release: %d\n", httpCode);
         https.end();
         isOTA = false;
         return -1;
@@ -127,15 +140,33 @@ int OTA::updateDevice()
     // Ler o JSON da resposta
     String payload = https.getString();
     https.end();
+    display->OTAScreen("JSON recebido, extraindo informações...");
+    //Serial.println("[OTA] JSON recebido, extraindo informações...");
 
-    Serial.println("[OTA] JSON recebido, buscando asset ID...");
+    // ========== EXTRAIR TAG/VERSÃO DA RELEASE ==========
+    int tagPos = payload.indexOf("\"tag_name\":\"");
+    String releaseTag = "";
+    
+    if (tagPos != -1)
+    {
+        tagPos += 12; // Pular "tag_name":"
+        int tagEnd = payload.indexOf("\"", tagPos);
+        releaseTag = payload.substring(tagPos, tagEnd);
+        display->OTAScreen("Versao: " + releaseTag);
+        //Serial.printf("[OTA] Tag da release: %s\n", releaseTag.c_str());
+    }
+    else
+    {
+         display->OTAScreen("Versao nao encontrada.");
+        //Serial.println("[OTA] Tag não encontrada no JSON");
+    }
 
-    // ========== PASSO 2: Extrair o ASSET ID (não a browser_download_url) ==========
-    // Procurar por: "id": 123456789 (dentro do array "assets")
+    // ========== PASSO 2: Extrair o ASSET ID ==========
     int assetsPos = payload.indexOf("\"assets\":[");
     if (assetsPos == -1)
     {
-        Serial.println("[OTA] Nenhum asset encontrado na release");
+        display->OTAScreen("Nenhum asset encontrado na release");
+        //Serial.println("[OTA] Nenhum asset encontrado na release");
         isOTA = false;
         return -1;
     }
@@ -144,7 +175,8 @@ int OTA::updateDevice()
     int idPos = payload.indexOf("\"id\":", assetsPos);
     if (idPos == -1)
     {
-        Serial.println("[OTA] ID do asset não encontrado");
+        display->OTAScreen("ID do asset nao encontrado");
+        //Serial.println("[OTA] ID do asset não encontrado");
         isOTA = false;
         return -1;
     }
@@ -154,7 +186,8 @@ int OTA::updateDevice()
     String assetId = payload.substring(idPos, idEnd);
     assetId.trim();
 
-    Serial.printf("[OTA] Asset ID encontrado: %s\n", assetId.c_str());
+    display->OTAScreen("Asset ID encontrado: " + assetId);
+    //Serial.printf("[OTA] Asset ID encontrado: %s\n", assetId.c_str());
 
     // Construir URL da API para download do asset
     String assetUrl = "https://api.github.com/repos/sobreiracaio/GrowESP2.0/releases/assets/" + assetId;
@@ -166,25 +199,25 @@ int OTA::updateDevice()
     HTTPClient https2;
     if (!https2.begin(client2, assetUrl))
     {
-        Serial.println("[OTA] Falha ao conectar no asset");
+        display->OTAScreen("Falha ao conectar no asset");
+        //Serial.println("[OTA] Falha ao conectar no asset");
         isOTA = false;
         return -1;
     }
 
-    // IMPORTANTE: Accept: application/octet-stream para baixar o binário
     https2.addHeader("Authorization", String("token ") + token);
     https2.addHeader("Accept", "application/octet-stream");
     https2.addHeader("User-Agent", "ESP32");
-
-    // Seguir redirects (GitHub pode redirecionar)
     https2.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
 
-    Serial.println("[OTA] Iniciando download do binário...");
+    display->OTAScreen("Iniciando download do binario...");
+    //Serial.println("[OTA] Iniciando download do binário...");
 
     httpCode = https2.GET();
     if (httpCode != HTTP_CODE_OK)
     {
-        Serial.printf("[OTA] HTTP erro ao baixar binário: %d\n", httpCode);
+        display->OTAScreen("HTTP erro ao baixar binario: " + httpCode);
+        //Serial.printf("[OTA] HTTP erro ao baixar binário: %d\n", httpCode);
         https2.end();
         isOTA = false;
         return -1;
@@ -195,17 +228,20 @@ int OTA::updateDevice()
 
     if (totalSize <= 0)
     {
-        Serial.println("[OTA] Tamanho do binário inválido");
+        display->OTAScreen("Tamanho do binario invalido");
+        //Serial.println("[OTA] Tamanho do binário inválido");
         https2.end();
         isOTA = false;
         return -1;
     }
 
-    Serial.printf("[OTA] Tamanho do binário: %d bytes\n", totalSize);
+    display->OTAScreen("Tamanho do binario: " + totalSize);
+    //Serial.printf("[OTA] Tamanho do binário: %d bytes\n", totalSize);
 
     if (!Update.begin(totalSize))
     {
-        Serial.printf("[OTA] Falha ao iniciar Update: %d\n", Update.getError());
+        display->OTAScreen("Falha ao iniciar atualizacao: " + Update.getError());
+        //Serial.printf("[OTA] Falha ao iniciar Update: %d\n", Update.getError());
         https2.end();
         isOTA = false;
         return -1;
@@ -228,19 +264,20 @@ int OTA::updateDevice()
             {
                 if (Update.write(buffer, bytesRead) != bytesRead)
                 {
-                    Serial.println("[OTA] Erro ao escrever no Update");
+                    display->OTAScreen("Erro ao escrever no Update");
+                    //Serial.println("[OTA] Erro ao escrever no Update");
                     https2.end();
                     isOTA = false;
                     return -1;
                 }
                 currentSize += bytesRead;
                 
-                // Mostrar progresso a cada 10KB
                 if (currentSize % 10240 == 0)
                 {
-                    Serial.printf("[OTA] Progresso: %d/%d bytes (%.1f%%)\n", 
-                                  currentSize, totalSize, 
-                                  (float)currentSize * 100.0 / totalSize);
+                    display->OTAScreen("Progresso...");
+                    // Serial.printf("[OTA] Progresso: %d/%d bytes (%.1f%%)\n", 
+                    //               currentSize, totalSize, 
+                    //               (float)currentSize * 100.0 / totalSize);
                 }
             }
         }
@@ -251,19 +288,29 @@ int OTA::updateDevice()
 
     if (!Update.end(true))
     {
-        Serial.printf("[OTA] Erro ao finalizar Update: %d\n", Update.getError());
+        display->OTAScreen("Erro ao finalizar atualizacao: " + Update.getError());
+        //Serial.printf("[OTA] Erro ao finalizar Update: %d\n", Update.getError());
         isOTA = false;
         return -1;
     }
 
     if (!Update.isFinished())
     {
-        Serial.println("[OTA] Update não foi finalizado corretamente");
+        display->OTAScreen("Atualizacao nao foi finalizada corretamente");
+        //Serial.println("[OTA] Update não foi finalizado corretamente");
         isOTA = false;
         return -1;
     }
-
-    Serial.println("[OTA] Atualização concluída com sucesso!");
+    display->OTAScreen("Atualizacao concluida com sucesso! Reiniciando...");
+    //Serial.println("[OTA] Atualização concluída com sucesso!");
+    
+    // ========== SALVAR A TAG/VERSÃO ==========
+    if (releaseTag.length() > 0)
+    {
+        //Serial.printf("[OTA] Salvando versão: %s\n", releaseTag.c_str());
+        setVersion(releaseTag);
+    }
+    
     delay(500);
     ESP.restart();
 

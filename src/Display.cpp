@@ -28,7 +28,9 @@ void Display::initLogoScreen()
 {
     display->drawBitmap(130, 43, logo, 220, 235, WHITE);
     ledcWrite(0, 255);
+    
     delay(3000);
+
     display->fillScreen(BLACK);
 }
 
@@ -795,7 +797,7 @@ bool Display::fadeScreenOff()
     return true;
 }
 
-void Display::fadeScreenOn()
+bool Display::fadeScreenOn()
 {
     const unsigned long interval = 1; 
     static unsigned long lastStep = 0;
@@ -810,6 +812,7 @@ void Display::fadeScreenOn()
             ledcWrite(0, duty);
         }
     }
+    return true;
 }
 
 
@@ -902,12 +905,28 @@ void Display::bottomScreen(String t1, String t2, String t3, String t4)
 
 }
 
+void Display::OTAhasUpdate()
+{
+    display->drawRect(20, 5, 20, 16, WHITE);
+}
+void Display::wifiConnStatus()
+{
+    display->drawRect(44, 5, 20, 16, WHITE);
+}
+
+void Display::showConnStatus()
+{
+    wifiConnStatus();
+    OTAhasUpdate();
+}
 void Display::topScreen(String label, int arrowSetup, int color)
 {
     const int height = display->fontHeight(2);
     const int textPos = (50 - height) / 2;
     const int sectionWidth = 440;
     const int textW = display->textWidth(label, 4);
+
+    showConnStatus();
     
     display->setTextDatum(MC_DATUM);
     display->setTextColor(WHITE, BLACK);
@@ -1376,7 +1395,7 @@ void Display::drawVersionInput(int highlightedDigit)
 void Display::drawAboutMenu()
 {
     display->setTextDatum(MC_DATUM);
-    display->drawString("Growbox v1.0", 240, 130, 4);
+    display->drawString("Growbox " + ota->getVersion(), 240, 130, 4);
     display->drawString("Versao do modulo : 101", 240, 170, 2);
     display->drawString("Instagram: @pagina", 240, 195, 2);
     display->setTextDatum(TL_DATUM);
@@ -1385,4 +1404,15 @@ void Display::drawAboutMenu()
 void Display::injectFBase(FBase *firebase)
 {
     this->firebase = firebase;
+}
+
+void Display::OTAScreen(String note)
+{
+    
+    flushScreen();
+    display->setTextColor(WHITE, BLACK);
+    display->setTextDatum(MC_DATUM);
+    display->drawString(note, 200, 240, 2);
+
+    display->setTextDatum(TL_DATUM);
 }

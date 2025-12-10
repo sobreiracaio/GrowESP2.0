@@ -57,6 +57,9 @@ class Display {
         void actuatorDisplay();
         String formatStatus(bool status);
 
+        void OTAhasUpdate();
+        void wifiConnStatus();
+        void showConnStatus();
         void drawMainTabs(int activeTab);
         void drawWifiMenu(bool selected);
         void drawUpdateMenu(int selectedOption, int highlightedDigit);
@@ -82,13 +85,15 @@ class Display {
         void confScreen(float *menu);
 
         void menuSwitch(float *menu);
+
+        void OTAScreen(String note);
         
         void flushScreen();
 
         void injectFBase(FBase *firebase);
 
         bool fadeScreenOff();
-        void fadeScreenOn();
+        bool fadeScreenOn();
 
         void asyncSet();
        

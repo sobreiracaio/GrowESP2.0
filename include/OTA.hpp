@@ -23,7 +23,7 @@ class OTA {
         int digit3;
 
         String version;
-
+        bool hasUpdate;
 
         Preferences *prefs;
         FBase *firebase;
@@ -41,7 +41,9 @@ class OTA {
         void setBinaryPath(String path);
         void setToken(String token);
         void setVersion(String new_version);
+        void setHasUpdate(bool status);
 
+        bool getHasUpdate();
         String getVersion();
 
         void injectFbase(FBase *firebase);

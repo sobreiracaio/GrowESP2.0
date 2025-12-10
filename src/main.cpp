@@ -129,15 +129,18 @@ void getValues()
     String binaryPath = "/_Binary";
     String token = "";
     String tokenPath = "/_Token";
+    String hasOTA = "";
+    String hasOTAPath = "/_HasUpdate";
 
     firebase->awaitGet(binaryPath, &binaryUrl);
     ota.setBinaryPath(binaryUrl);
    
-
     firebase->awaitGet(tokenPath, &token);
     ota.setToken(token);
-    
 
+    firebase->awaitGet(hasOTAPath, &hasOTA);
+    ota.setHasUpdate(hasOTA == "true" ? true : false );
+    
     firebase->awaitGet(safeEmail + "/InsertedData/Light/HourOn", &dayTime);
     formatDate(&dayTime, DAY);
 
