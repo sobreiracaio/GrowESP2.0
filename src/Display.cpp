@@ -662,6 +662,9 @@ void Display::confScreen(float *menu)
             {
                 OTAScreen("Atualizando...");
                 ota->updateDevice();
+                OTAScreen("Sistema Atualizado. Reiniciando...");
+                delay(1000);
+                ESP.restart();
             } 
             btn[3]->read(&submenu, DECREMENT, 8, 0);
 
@@ -908,13 +911,38 @@ void Display::bottomScreen(String t1, String t2, String t3, String t4)
 
 void Display::OTAhasUpdate()
 {
+    static unsigned long lastMillis = 0;
+    static int radius = 7;
     int color = BLACK;
+    unsigned long interval = 250; // intervalo em ms entre cada círculo
 
     if (ota->getHasUpdate() == true)
-        color = WHITE;
-    display->drawCircle(61, 11, 7, color);        
-    //display->drawRect(52, 3, 20, 16, color);
+        color = BLUE;
+    else
+        return;
+
+    unsigned long currentMillis = millis();
+
+    if (currentMillis - lastMillis >= interval)
+    {
+        lastMillis = currentMillis;
+
+        if (radius > 0)
+        {
+            display->drawCircle(61, 11, radius, color); // desenha círculo colorido
+            display->drawCircle(61, 11, radius + 1, BLACK); // depois apaga (ou desenha preto)
+            radius--;
+        }
+        else if( radius == 0)
+        {
+            display->drawCircle(61, 11, radius - 1, BLACK);            
+            display->drawCircle(61, 11, radius, BLACK);
+            display->drawCircle(61, 11, radius + 1, BLACK);
+            radius = 7; // reinicia a animação
+        }
+    }
 }
+
 
 
 
