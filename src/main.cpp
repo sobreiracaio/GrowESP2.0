@@ -11,6 +11,8 @@
 #include "Light.hpp"
 #include "Serial.hpp"
 
+#include "esp_task_wdt.h"
+
 //Libraries
 
 Preferences prefs;
@@ -288,12 +290,17 @@ void setup()
         }
         
         display->flushScreen();
+
+        //esp_task_wdt_init(60, true);  // true = reiniciar automaticamente
+        //esp_task_wdt_add(NULL);                // Adiciona a task atual (loop)
+
+
 }
 
 
 void loop() 
 {
-    
+    //esp_task_wdt_reset();
     checkActivity(isOTA);
   
 

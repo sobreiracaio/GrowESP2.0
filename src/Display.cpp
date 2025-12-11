@@ -912,18 +912,47 @@ void Display::OTAhasUpdate()
 
     if (ota->getHasUpdate() == true)
         color = WHITE;
-            
-    display->drawRect(44, 5, 20, 16, color);
+    display->drawCircle(61, 11, 7, color);        
+    //display->drawRect(52, 3, 20, 16, color);
 }
+
+
 
 void Display::wifiConnStatus()
 {
-    display->fillRect(20, 5, 5, 3, WHITE);
-    display->fillRect(26, 5, 5, 6, WHITE);
-    display->fillRect(32, 5, 5, 9, WHITE);
-    display->fillRect(38, 5, 5, 12, WHITE);
-    display->fillRect(44, 5, 5, 15, WHITE);
-    int wifiSignal = wifi->getSignalStrenght();
+    int statusConnColor = wifi->getStatus() ? WHITE : RED;
+    int wifiSignal = !(wifi->getSignalStrenght());
+    static int signal = 0;
+    if(wifiSignal >= -55) signal = 5;
+    else if(wifiSignal >= -65) signal = 4;
+    else if(wifiSignal >= -75) signal = 3;
+    else if(wifiSignal >= -85) signal = 2;
+    else if(wifiSignal >= -95) signal = 1;
+    int initX = 20;
+    int initY = 5;
+    int barW = 5;
+    int space = 1;
+    int maxH = 14;
+
+    for (int i = 0; i < 5; i++)
+    {
+        int h = (i + 1) * 3;
+        int color = (i < signal) ? statusConnColor : BLACK;
+
+        display->fillRect(
+            initX + i * (barW + space),
+            initY + (maxH - h),
+            barW,
+            h,
+            color
+        );
+    }
+
+    // display->fillRect(20, 20, 5, 3, WHITE);
+    // display->fillRect(26, 17, 5, 6, WHITE);
+    // display->fillRect(32, 14, 5, 9, WHITE);
+    // display->fillRect(38, 11, 5, 12, WHITE);
+    // display->fillRect(44, 8, 5, 15, WHITE);
     //display->drawRect(20, 5, 20, 16, WHITE);
 }
 
