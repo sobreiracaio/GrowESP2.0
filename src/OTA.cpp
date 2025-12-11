@@ -305,8 +305,8 @@ int OTA::updateDevice()
         setVersion(releaseTag);
     }
     
-    delay(500);
-    ESP.restart();
+    // delay(500);
+    // ESP.restart();
 
     return 0;
 }
