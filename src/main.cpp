@@ -11,8 +11,6 @@
 #include "Light.hpp"
 #include "Serial.hpp"
 
-#include "esp_task_wdt.h"
-
 //Libraries
 
 Preferences prefs;
@@ -134,10 +132,10 @@ void getValues()
     String hasOTA = "";
     String hasOTAPath = "/_HasUpdate";
 
-    String heapPath = "/_FreeMemory";
-    float heapsize = esp_get_free_heap_size();
+    // String heapPath = "/_FreeMemory";
+    // float heapsize = esp_get_free_heap_size();
 
-    firebase->aSyncSetFloat(heapPath, heapsize);
+    // firebase->aSyncSetFloat(heapPath, heapsize);
 
     firebase->awaitGet(binaryPath, &binaryUrl);
     ota.setBinaryPath(binaryUrl);
@@ -290,17 +288,12 @@ void setup()
         }
         
         display->flushScreen();
-
-        //esp_task_wdt_init(60, true);  // true = reiniciar automaticamente
-        //esp_task_wdt_add(NULL);                // Adiciona a task atual (loop)
-
-
 }
 
 
 void loop() 
 {
-    //esp_task_wdt_reset();
+    
     checkActivity(isOTA);
   
 

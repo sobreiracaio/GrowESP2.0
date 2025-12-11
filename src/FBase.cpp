@@ -62,6 +62,8 @@ bool FBase::init() {
         // Inicializar Realtime Database
         app.getApp<RealtimeDatabase>(Database);
         Database.url(dbUrl.c_str());
+        aClient.setSyncReadTimeout(30);
+        aClient.setSyncSendTimeout(30);
         
         //Serial.println("✅ Realtime Database configurado!");
         //Serial.println("=================================\n");
@@ -78,7 +80,7 @@ bool FBase::stopApp()
 {
     aClient.stopAsync(true);
     //Database.resetApp();
-    deinitializeApp(app);
+    //deinitializeApp(app);
     
     return true;
 }
