@@ -975,13 +975,6 @@ void Display::wifiConnStatus()
             color
         );
     }
-
-    // display->fillRect(20, 20, 5, 3, WHITE);
-    // display->fillRect(26, 17, 5, 6, WHITE);
-    // display->fillRect(32, 14, 5, 9, WHITE);
-    // display->fillRect(38, 11, 5, 12, WHITE);
-    // display->fillRect(44, 8, 5, 15, WHITE);
-    //display->drawRect(20, 5, 20, 16, WHITE);
 }
 
 void Display::showConnStatus()
