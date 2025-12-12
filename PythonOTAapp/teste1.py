@@ -6,10 +6,10 @@ import threading
 import csv
 import os
 from datetime import datetime
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
-import webview
-import json
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
+from matplotlib.figure import Figure
+import matplotlib.dates as mdates
 
 # ==============================
 # CONFIGURAÇÃO FIREBASE
@@ -37,7 +37,8 @@ class ThemeManager:
                 'button_hover': '#4d4d4d',
                 'button_active': '#2d2d2d',
                 'frame_bg': '#252525',
-                'plot_template': 'plotly_dark',
+                'plot_bg': '#2d2d2d',
+                'plot_fg': '#ffffff',
                 'accent': '#4CAF50'
             }
         else:
@@ -50,7 +51,8 @@ class ThemeManager:
                 'button_hover': '#d0d0d0',
                 'button_active': '#c0c0c0',
                 'frame_bg': '#ffffff',
-                'plot_template': 'plotly_white',
+                'plot_bg': '#ffffff',
+                'plot_fg': '#000000',
                 'accent': '#4CAF50'
             }
 
@@ -222,11 +224,16 @@ class FirebaseApp:
         self.user_path = f"{safe_email}/"
         self.csv_file = f"growstation_data_{safe_email}.csv"
         self.graphs_initialized = False
-        self.current_graph_window = None
+        self.current_canvas = None
+        self.current_toolbar = None
         self.graph_update_interval = 10  # segundos
+        self.current_graph_type = None
         
         colors = theme_manager.get_colors()
         self.root.configure(bg=colors['bg'])
+
+        # Configurar estilo matplotlib
+        plt.style.use('dark_background' if theme_manager.current_theme == 'dark' else 'default')
 
         # Frame superior para botão de tema
         top_frame = tk.Frame(root, bg=colors['bg'])
@@ -481,14 +488,14 @@ class FirebaseApp:
         buttons_frame = tk.Frame(graphs_frame, bg=colors['bg'])
         buttons_frame.pack(pady=10)
 
-        RoundedButton(buttons_frame, text="💧 Gráfico Umidade", 
-                     command=lambda: self.show_graph("Humidity"), width=180).pack(side='left', padx=5)
-        RoundedButton(buttons_frame, text="🌱 Gráfico Solo", 
-                     command=lambda: self.show_graph("Soil"), width=180).pack(side='left', padx=5)
-        RoundedButton(buttons_frame, text="🌡️ Gráfico Temperatura", 
-                     command=lambda: self.show_graph("Temperature"), width=180).pack(side='left', padx=5)
-        RoundedButton(buttons_frame, text="📊 Gráfico Geral", 
-                     command=lambda: self.show_graph("Geral"), width=180).pack(side='left', padx=5)
+        RoundedButton(buttons_frame, text="💧 Umidade", 
+                     command=lambda: self.show_graph("Humidity"), width=150).pack(side='left', padx=5)
+        RoundedButton(buttons_frame, text="🌱 Solo", 
+                     command=lambda: self.show_graph("Soil"), width=150).pack(side='left', padx=5)
+        RoundedButton(buttons_frame, text="🌡️ Temperatura", 
+                     command=lambda: self.show_graph("Temperature"), width=150).pack(side='left', padx=5)
+        RoundedButton(buttons_frame, text="📊 Geral", 
+                     command=lambda: self.show_graph("Geral"), width=150).pack(side='left', padx=5)
 
         # Frame para exibir o gráfico
         self.graph_display_frame = tk.Frame(graphs_frame, bg=colors['bg'])
@@ -507,36 +514,22 @@ class FirebaseApp:
             self.update_graphs_loop()
 
     def show_graph(self, graph_type):
+        self.current_graph_type = graph_type
+        self.generate_and_display_graph()
+
+    def generate_and_display_graph(self):
         # Limpar frame anterior
         for widget in self.graph_display_frame.winfo_children():
             widget.destroy()
         
-        # Fechar janela anterior se existir
-        if self.current_graph_window:
-            try:
-                self.current_graph_window.destroy()
-            except:
-                pass
-        
-        # Criar nova janela para o gráfico
-        self.current_graph_window = tk.Toplevel(self.root)
-        self.current_graph_window.title(f"Gráfico - {graph_type}")
-        self.current_graph_window.geometry("1200x700")
-        
-        colors = theme_manager.get_colors()
-        self.current_graph_window.configure(bg=colors['bg'])
-        
-        # Frame para o gráfico
-        graph_frame = tk.Frame(self.current_graph_window, bg=colors['bg'])
-        graph_frame.pack(fill='both', expand=True, padx=10, pady=10)
-        
-        # Gerar e exibir o gráfico
-        self.generate_and_display_graph(graph_type, graph_frame)
+        if self.current_canvas:
+            self.current_canvas = None
+        if self.current_toolbar:
+            self.current_toolbar = None
 
-    def generate_and_display_graph(self, graph_type, frame):
         if not os.path.isfile(self.csv_file):
-            ttk.Label(frame, text="Sem dados disponíveis. Aguarde a coleta de dados...", 
-                     font=("Arial", 12)).pack(pady=50)
+            ttk.Label(self.graph_display_frame, text="⏳ Aguardando coleta de dados...", 
+                     font=("Arial", 14)).pack(pady=50)
             return
 
         try:
@@ -561,8 +554,8 @@ class FirebaseApp:
                         actuators_data[key].append(int(row[key]))
 
             if len(timestamps) == 0:
-                ttk.Label(frame, text="Sem dados suficientes para gerar gráfico.", 
-                         font=("Arial", 12)).pack(pady=50)
+                ttk.Label(self.graph_display_frame, text="📭 Sem dados suficientes", 
+                         font=("Arial", 14)).pack(pady=50)
                 return
 
             # Obter targets e tolerâncias
@@ -577,232 +570,149 @@ class FirebaseApp:
             target_temp = float(temp_data.get("TargetTemp", 25)) if temp_data else 25
             temp_tol = float(temp_data.get("TempTolerance", 3)) if temp_data else 3
 
-            # Criar gráfico baseado no tipo
+            # Criar figura
             colors = theme_manager.get_colors()
+            fig = Figure(figsize=(12, 7), facecolor=colors['plot_bg'])
             
-            if graph_type == "Humidity":
-                fig = self.create_sensor_graph(timestamps, humidity, target_humid, humid_tol, 
-                                               "Umidade (%)", "💧 Histórico de Umidade")
-            elif graph_type == "Soil":
-                fig = self.create_sensor_graph(timestamps, soil, target_soil, soil_tol, 
-                                               "Umidade do Solo (%)", "🌱 Histórico do Solo")
-            elif graph_type == "Temperature":
-                fig = self.create_sensor_graph(timestamps, temperature, target_temp, temp_tol, 
-                                               "Temperatura (°C)", "🌡️ Histórico de Temperatura")
-            elif graph_type == "Geral":
-                fig = self.create_general_graph(timestamps, humidity, soil, temperature, 
-                                               actuators_data, target_humid, humid_tol,
-                                               target_soil, soil_tol, target_temp, temp_tol)
+            if self.current_graph_type == "Humidity":
+                self.plot_sensor_graph(fig, timestamps, humidity, target_humid, humid_tol, 
+                                      "Umidade (%)", "💧 Histórico de Umidade")
+            elif self.current_graph_type == "Soil":
+                self.plot_sensor_graph(fig, timestamps, soil, target_soil, soil_tol, 
+                                      "Umidade do Solo (%)", "🌱 Histórico do Solo")
+            elif self.current_graph_type == "Temperature":
+                self.plot_sensor_graph(fig, timestamps, temperature, target_temp, temp_tol, 
+                                      "Temperatura (°C)", "🌡️ Histórico de Temperatura")
+            elif self.current_graph_type == "Geral":
+                self.plot_general_graph(fig, timestamps, humidity, soil, temperature, actuators_data,
+                                       target_humid, humid_tol, target_soil, soil_tol, target_temp, temp_tol)
             
-            # Salvar como HTML e exibir
-            import tempfile
-            html_file = tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.html')
-            fig.write_html(html_file.name)
-            html_file.close()
+            # Exibir no tkinter
+            self.current_canvas = FigureCanvasTkAgg(fig, self.graph_display_frame)
+            self.current_canvas.draw()
+            self.current_canvas.get_tk_widget().pack(fill='both', expand=True)
             
-            # Usar webview para exibir
-            try:
-                import tkinterweb
-                web_frame = tkinterweb.HtmlFrame(frame, messages_enabled=False)
-                web_frame.load_file(html_file.name)
-                web_frame.pack(fill='both', expand=True)
-            except ImportError:
-                # Fallback: abrir no navegador padrão
-                import webbrowser
-                webbrowser.open('file://' + html_file.name)
-                ttk.Label(frame, text=f"Gráfico aberto no navegador", 
-                         font=("Arial", 12)).pack(pady=50)
+            # Adicionar toolbar de navegação
+            self.current_toolbar = NavigationToolbar2Tk(self.current_canvas, self.graph_display_frame)
+            self.current_toolbar.update()
 
         except Exception as e:
-            ttk.Label(frame, text=f"Erro ao gerar gráfico: {e}", 
+            ttk.Label(self.graph_display_frame, text=f"❌ Erro: {str(e)}", 
                      font=("Arial", 12), foreground="red").pack(pady=50)
 
-    def create_sensor_graph(self, timestamps, values, target, tolerance, ylabel, title):
+    def plot_sensor_graph(self, fig, timestamps, values, target, tolerance, ylabel, title):
         colors = theme_manager.get_colors()
+        ax = fig.add_subplot(111)
         
-        fig = go.Figure()
+        # Configurar fundo
+        ax.set_facecolor(colors['plot_bg'])
         
-        # Linha principal de leitura
-        fig.add_trace(go.Scatter(
-            x=timestamps, y=values,
-            mode='lines',
-            name='Leitura',
-            line=dict(color='#2196F3', width=3),
-            hovertemplate='<b>%{x}</b><br>Valor: %{y:.2f}<extra></extra>'
-        ))
+        # Plot principal
+        ax.plot(timestamps, values, label='Leitura', color='#2196F3', linewidth=2.5, marker='o', 
+                markersize=3, markevery=max(1, len(timestamps)//50))
         
         # Linha target
-        fig.add_trace(go.Scatter(
-            x=timestamps, y=[target] * len(timestamps),
-            mode='lines',
-            name=f'Target ({target})',
-            line=dict(color='#4CAF50', width=2, dash='dot'),
-            hovertemplate=f'Target: {target}<extra></extra>'
-        ))
+        ax.axhline(y=target, color='#4CAF50', linestyle=':', linewidth=2, label=f'Target ({target})', alpha=0.8)
         
-        # Limite superior
-        fig.add_trace(go.Scatter(
-            x=timestamps, y=[target + tolerance] * len(timestamps),
-            mode='lines',
-            name=f'Limite Superior ({target + tolerance})',
-            line=dict(color='#FF5722', width=2, dash='dash'),
-            hovertemplate=f'Limite Superior: {target + tolerance}<extra></extra>'
-        ))
+        # Limites
+        upper = target + tolerance
+        lower = target - tolerance
+        ax.axhline(y=upper, color='#FF5722', linestyle='--', linewidth=1.5, 
+                  label=f'Limite Superior ({upper})', alpha=0.7)
+        ax.axhline(y=lower, color='#FF5722', linestyle='--', linewidth=1.5, 
+                  label=f'Limite Inferior ({lower})', alpha=0.7)
         
-        # Limite inferior
-        fig.add_trace(go.Scatter(
-            x=timestamps, y=[target - tolerance] * len(timestamps),
-            mode='lines',
-            name=f'Limite Inferior ({target - tolerance})',
-            line=dict(color='#FF5722', width=2, dash='dash'),
-            hovertemplate=f'Limite Inferior: {target - tolerance}<extra></extra>'
-        ))
+        # Área entre limites
+        ax.fill_between(timestamps, lower, upper, color='#4CAF50', alpha=0.1)
         
-        fig.update_layout(
-            title=title,
-            xaxis_title='Tempo',
-            yaxis_title=ylabel,
-            template=colors['plot_template'],
-            hovermode='x unified',
-            showlegend=True,
-            height=600,
-            xaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)'),
-            yaxis=dict(showgrid=True, gridcolor='rgba(128,128,128,0.2)')
-        )
+        # Configurações
+        ax.set_xlabel('Tempo', fontsize=11, color=colors['plot_fg'])
+        ax.set_ylabel(ylabel, fontsize=11, color=colors['plot_fg'])
+        ax.set_title(title, fontsize=14, fontweight='bold', color=colors['plot_fg'], pad=20)
+        ax.legend(loc='upper left', framealpha=0.9)
+        ax.grid(True, alpha=0.3, linestyle='--')
+        ax.tick_params(colors=colors['plot_fg'])
         
-        return fig
+        # Formato de data
+        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+        fig.autofmt_xdate()
+        
+        fig.tight_layout()
 
-    def create_general_graph(self, timestamps, humidity, soil, temperature, actuators_data,
-                            target_humid, humid_tol, target_soil, soil_tol, target_temp, temp_tol):
+    def plot_general_graph(self, fig, timestamps, humidity, soil, temperature, actuators_data,
+                          target_humid, humid_tol, target_soil, soil_tol, target_temp, temp_tol):
         colors = theme_manager.get_colors()
         
-        # Criar subplots
-        fig = make_subplots(
-            rows=2, cols=1,
-            row_heights=[0.7, 0.3],
-            subplot_titles=("📊 Leituras dos Sensores", "⚙️ Status dos Atuadores"),
-            vertical_spacing=0.12
-        )
+        # Criar 2 subplots
+        ax1 = fig.add_subplot(211)
+        ax2 = fig.add_subplot(212)
         
-        # Gráfico de sensores
-        fig.add_trace(go.Scatter(
-            x=timestamps, y=humidity,
-            mode='lines',
-            name='Umidade',
-            line=dict(color='#2196F3', width=2),
-            hovertemplate='<b>Umidade</b><br>%{x}<br>Valor: %{y:.2f}%<extra></extra>'
-        ), row=1, col=1)
+        ax1.set_facecolor(colors['plot_bg'])
+        ax2.set_facecolor(colors['plot_bg'])
         
-        fig.add_trace(go.Scatter(
-            x=timestamps, y=soil,
-            mode='lines',
-            name='Solo',
-            line=dict(color='#8B4513', width=2),
-            hovertemplate='<b>Solo</b><br>%{x}<br>Valor: %{y:.2f}%<extra></extra>'
-        ), row=1, col=1)
+        # ===== SUBPLOT 1: Sensores =====
+        ax1.plot(timestamps, humidity, label='Umidade', color='#2196F3', linewidth=2, marker='o', 
+                markersize=2, markevery=max(1, len(timestamps)//50))
+        ax1.plot(timestamps, soil, label='Solo', color='#8B4513', linewidth=2, marker='s', 
+                markersize=2, markevery=max(1, len(timestamps)//50))
+        ax1.plot(timestamps, temperature, label='Temperatura', color='#FF5722', linewidth=2, marker='^', 
+                markersize=2, markevery=max(1, len(timestamps)//50))
         
-        fig.add_trace(go.Scatter(
-            x=timestamps, y=temperature,
-            mode='lines',
-            name='Temperatura',
-            line=dict(color='#FF5722', width=2),
-            hovertemplate='<b>Temperatura</b><br>%{x}<br>Valor: %{y:.2f}°C<extra></extra>'
-        ), row=1, col=1)
+        # Linhas de target (discretas)
+        ax1.axhline(y=target_humid, color='#2196F3', linestyle=':', linewidth=1, alpha=0.4)
+        ax1.axhline(y=target_soil, color='#8B4513', linestyle=':', linewidth=1, alpha=0.4)
+        ax1.axhline(y=target_temp, color='#FF5722', linestyle=':', linewidth=1, alpha=0.4)
         
-        # Adicionar linhas de target (mais discretas)
-        fig.add_trace(go.Scatter(
-            x=timestamps, y=[target_humid] * len(timestamps),
-            mode='lines',
-            name='Target Umidade',
-            line=dict(color='#2196F3', width=1, dash='dot'),
-            opacity=0.5,
-            showlegend=False
-        ), row=1, col=1)
+        ax1.set_ylabel('Valores', fontsize=11, color=colors['plot_fg'])
+        ax1.set_title('📊 Dashboard Completo - Sensores', fontsize=14, fontweight='bold', 
+                     color=colors['plot_fg'], pad=15)
+        ax1.legend(loc='upper left', framealpha=0.9, ncol=3)
+        ax1.grid(True, alpha=0.3, linestyle='--')
+        ax1.tick_params(colors=colors['plot_fg'])
         
-        fig.add_trace(go.Scatter(
-            x=timestamps, y=[target_soil] * len(timestamps),
-            mode='lines',
-            name='Target Solo',
-            line=dict(color='#8B4513', width=1, dash='dot'),
-            opacity=0.5,
-            showlegend=False
-        ), row=1, col=1)
-        
-        fig.add_trace(go.Scatter(
-            x=timestamps, y=[target_temp] * len(timestamps),
-            mode='lines',
-            name='Target Temp',
-            line=dict(color='#FF5722', width=1, dash='dot'),
-            opacity=0.5,
-            showlegend=False
-        ), row=1, col=1)
-        
-        # Gráfico de atuadores (heatmap style)
-        actuator_colors = {
-            'cooler': '#00BCD4',
-            'dehumid': '#FF9800',
-            'heater': '#F44336',
-            'humid': '#4CAF50',
-            'light': '#FFEB3B',
-            'pump': '#9C27B0'
+        # ===== SUBPLOT 2: Atuadores =====
+        actuator_info = {
+            'cooler': {'label': 'Cooler', 'color': '#00BCD4', 'y': 5},
+            'dehumid': {'label': 'Dehumid', 'color': '#FF9800', 'y': 4},
+            'heater': {'label': 'Heater', 'color': '#F44336', 'y': 3},
+            'humid': {'label': 'Humid', 'color': '#4CAF50', 'y': 2},
+            'light': {'label': 'Light', 'color': '#FFEB3B', 'y': 1},
+            'pump': {'label': 'Pump', 'color': '#9C27B0', 'y': 0}
         }
         
-        actuator_labels = {
-            'cooler': 'Cooler',
-            'dehumid': 'Dehumid',
-            'heater': 'Heater',
-            'humid': 'Humid',
-            'light': 'Light',
-            'pump': 'Pump'
-        }
-        
-        y_offset = 0
         for actuator, data in actuators_data.items():
-            # Criar segmentos para quando o atuador está ON
-            x_on = []
-            y_on = []
-            
+            info = actuator_info[actuator]
             for i, (t, state) in enumerate(zip(timestamps, data)):
                 if state == 1:
-                    x_on.append(t)
-                    y_on.append(y_offset)
-            
-            if x_on:
-                fig.add_trace(go.Scatter(
-                    x=x_on, y=y_on,
-                    mode='markers',
-                    name=actuator_labels[actuator],
-                    marker=dict(
-                        color=actuator_colors[actuator],
-                        size=12,
-                        symbol='square',
-                        line=dict(width=1, color='white')
-                    ),
-                    hovertemplate=f'<b>{actuator_labels[actuator]}</b><br>%{{x}}<br>Status: ON<extra></extra>'
-                ), row=2, col=1)
-            
-            y_offset += 1
+                    ax2.scatter(t, info['y'], marker='s', s=80, color=info['color'], 
+                              alpha=0.8, edgecolors='white', linewidths=0.5)
         
-        # Configurar layout
-        fig.update_xaxes(title_text="Tempo", row=2, col=1)
-        fig.update_yaxes(title_text="Valores", row=1, col=1)
-        fig.update_yaxes(
-            title_text="Atuadores",
-            tickmode='array',
-            tickvals=list(range(len(actuators_data))),
-            ticktext=[actuator_labels[k] for k in actuators_data.keys()],
-            row=2, col=1
-        )
+        # Configurar eixo Y com nomes dos atuadores
+        ax2.set_yticks([info['y'] for info in actuator_info.values()])
+        ax2.set_yticklabels([info['label'] for info in actuator_info.values()])
+        ax2.set_xlabel('Tempo', fontsize=11, color=colors['plot_fg'])
+        ax2.set_ylabel('Atuadores', fontsize=11, color=colors['plot_fg'])
+        ax2.set_title('⚙️ Status dos Atuadores', fontsize=12, fontweight='bold', 
+                     color=colors['plot_fg'], pad=10)
+        ax2.grid(True, alpha=0.3, linestyle='--', axis='x')
+        ax2.tick_params(colors=colors['plot_fg'])
         
-        fig.update_layout(
-            template=colors['plot_template'],
-            hovermode='x unified',
-            showlegend=True,
-            height=800,
-            title_text="📊 Dashboard Completo - Growstation"
-        )
+        # Formato de data para ambos
+        ax1.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+        ax2.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
+        fig.autofmt_xdate()
         
-        return fig
+        fig.tight_layout()
+
+    def update_graphs_loop(self):
+        if self.graphs_initialized and self.current_graph_type:
+            try:
+                self.generate_and_display_graph()
+            except Exception as e:
+                print(f"Erro ao atualizar gráfico: {e}")
+        
+        if self.graphs_initialized:
+            self.root.after(self.graph_update_interval * 1000, self.update_graphs_loop)
 
     # ==============================
     # FUNÇÕES AUXILIARES
@@ -952,20 +862,6 @@ class FirebaseApp:
                 })
         except Exception as e:
             print(f"Erro ao salvar CSV: {e}")
-
-    def update_graphs_loop(self):
-        if self.graphs_initialized and self.current_graph_window:
-            try:
-                # Atualizar o gráfico atual se a janela ainda existir
-                if self.current_graph_window.winfo_exists():
-                    # Encontrar qual gráfico está sendo exibido e atualizá-lo
-                    # (implementação simplificada - você pode melhorar isso)
-                    pass
-            except:
-                pass
-        
-        if self.graphs_initialized:
-            self.root.after(self.graph_update_interval * 1000, self.update_graphs_loop)
 
     # ==============================
     # SALVAR CONFIGURAÇÕES

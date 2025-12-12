@@ -42,6 +42,8 @@ bool isOTA = false;
 
 static bool firebase_running = true;
 
+static unsigned long lastFirebaseReconnect = 0;
+
 void initClasses()
 {
     tft = new TFT_eSPI();
@@ -185,8 +187,6 @@ void getValues()
 
 void fireBaseLoadData(bool isOnLoop)
 {
-    
-    
     if(isOnLoop)
     {
         const unsigned long INTERVAL_MS = 30000;
@@ -195,6 +195,19 @@ void fireBaseLoadData(bool isOnLoop)
 
         if (now - lastSend < INTERVAL_MS) 
         {
+            return;
+        }
+
+        // MUDANÇA 12: VERIFICAR SE O FIREBASE ESTÁ REALMENTE PRONTO ANTES DE USAR
+        if (!firebase->isReady()) {
+            // Tentar reconectar se passou tempo suficiente desde última tentativa
+            if (now - lastFirebaseReconnect > 60000) { // 1 minuto
+                firebase->stopApp();
+                delay(1000);
+                firebase->init();
+                lastFirebaseReconnect = now;
+            }
+            lastSend = millis();
             return;
         }
 
@@ -213,9 +226,6 @@ void fireBaseLoadData(bool isOnLoop)
     }
 
     getValues();
-    
-
-    
 }
 
 
@@ -237,29 +247,40 @@ void checkActivity(bool isOTA)
     {
         return;
     }
-    if(button[0]->getIdle() && button[1]->getIdle() && button[2]->getIdle() && button[3]->getIdle() && initDevice)
+
+    if(button[0]->getIdle() && button[1]->getIdle() &&
+       button[2]->getIdle() && button[3]->getIdle() && initDevice)
+    {
+        if (display->fadeScreenOff())
         {
-            if (display->fadeScreenOff())
+            if(firebase_running)
             {
-                if(firebase_running)
-                {
-                    if (firebase->init())
-                        firebase_running = false;
+                if (WiFi.status() == WL_CONNECTED && firebase->init()) {
+                    firebase_running = false;
                 }
             }
-            
-            display->asyncSet();
-            
-            menu = 0;
-           
         }
-        else if(!button[0]->getIdle() || !button[1]->getIdle() || !button[2]->getIdle() || !button[3]->getIdle())
-        {
-            firebase_running = true;
-            firebase->stopApp();
-            display->fadeScreenOn();
+        
+        display->asyncSet();
+        menu = 0;
+    }
+    else if(!button[0]->getIdle() || !button[1]->getIdle() ||
+            !button[2]->getIdle() || !button[3]->getIdle())
+    {
+        firebase_running = true;
+        firebase->stopApp();
+
+        // ===== intervalo não bloqueante (100 ms) =====
+        unsigned long start = millis();
+        while (millis() - start < 100) {
+            yield(); // mantém WiFi/RTOS rodando
         }
+        // =============================================
+
+        display->fadeScreenOn();
+    }
 }
+
 
 
 void setup() 
@@ -293,40 +314,29 @@ void setup()
 
 void loop() 
 {
-    
     checkActivity(isOTA);
-  
-
-	display->menuSwitch(&menu);
-    wifi.loop();
-    firebase->loop();
-	getNow();
+    
+    display->menuSwitch(&menu);
+    
+    // MUDANÇA 15: VERIFICAR CONEXÃO WIFI ANTES DE CHAMAR LOOPS DO FIREBASE
+    if (WiFi.status() == WL_CONNECTED) {
+        wifi.loop();
+        firebase->loop();
+    } else {
+        // Tentar reconectar WiFi
+        wifi.loop();
+    }
+    
+    getNow();
 
     while(Serial1.available() >= 5) {
         int result = readPacket(&data_class);
-        if (result < 0) {
-            //Serial.printf("❌ Erro ao ler pacote do Pico: %d\n", result);
-        }
     }
 
     float lightValue = data_class.getIsRunning() ? light.getStatus() : 0;
     sendPacket(LIGHT0, lightValue);
     
-   
     light.run(data_class.getIsRunning());
     
-    
-   
-    
-   
-
-
-    
-   
-   
-	
     fireBaseLoadData(true);
-   
-	
-	
 }

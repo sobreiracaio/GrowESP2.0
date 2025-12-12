@@ -38,21 +38,26 @@ FBase::FBase(const String& api, const String& db_url, const String& user_email, 
 bool FBase::init() {
     //Serial.println("\n=== 🔥 Inicializando Firebase ===");
     //Serial.printf("Firebase Client v%s\n", FIREBASE_CLIENT_VERSION);
-    
+    ssl_client.setTimeout(30);
+
+    if (ssl_client.connected()) 
+    {
+        ssl_client.stop();
+        delay(100);
+    }
     
     // Configurar SSL
     ssl_client.setInsecure();
-    ssl_client.setTimeout(2);
     // Inicializar o app com autenticação
     //Serial.println("🔐 Autenticando...");
     initializeApp(aClient, app, getAuth(user_auth), processData, "authTask");
     
     // Aguardar autenticação (máximo 30 segundos)
-    //unsigned long timeout = millis();
-    while (app.isInitialized() && !app.ready()) // && millis() - timeout < 30000) 
+    unsigned long timeout = millis();
+    while (app.isInitialized() && !app.ready() && millis() - timeout < 60000) 
     {
         app.loop();
-        delay(5);
+        delay(100);
     }
     
     if (app.ready()) {
@@ -62,15 +67,14 @@ bool FBase::init() {
         // Inicializar Realtime Database
         app.getApp<RealtimeDatabase>(Database);
         Database.url(dbUrl.c_str());
-        aClient.setSyncReadTimeout(30);
-        aClient.setSyncSendTimeout(30);
+        aClient.setSyncReadTimeout(60);
+        aClient.setSyncSendTimeout(60);
         
-        //Serial.println("✅ Realtime Database configurado!");
-        //Serial.println("=================================\n");
         return true;
     } else {
-        //Serial.println("❌ Erro na autenticação do Firebase!");
-        //Serial.println("=================================\n");
+        if (ssl_client.connected()) 
+            ssl_client.stop();
+        
         authenticated = false;
         return false;
     }
@@ -78,17 +82,35 @@ bool FBase::init() {
 
 bool FBase::stopApp()
 {
-    aClient.stopAsync(true);
-    //Database.resetApp();
-    //deinitializeApp(app);
+    if (!authenticated) return true;
     
+    aClient.stopAsync(true);
+    
+    // Garantir fechamento da conexão SSL
+    if (ssl_client.connected()) {
+        ssl_client.stop();
+
+        // ===== intervalo não bloqueante (100ms) =====
+        unsigned long start = millis();
+        while (millis() - start < 100) {
+            yield(); // mantém o WiFi/RTOS ativo
+        }
+        // ============================================
+    }
+    
+    authenticated = false;
     return true;
 }
 
+
 void FBase::loop() {
+
+    if (!authenticated) 
+        return;
+
     app.loop();
     Database.loop();
-    ssl_client.setTimeout(2);
+    ssl_client.setTimeout(10);
 }
 
 bool FBase::isReady() {
@@ -148,21 +170,58 @@ void FBase::awaitGet(String& path, String *result)
 {
     if (!isReady()) return;
     
+    int retries = 3;
+    unsigned long wait_start = 0;
+    const unsigned long wait_time = 500; // 500ms
 
-    *result = Database.get<String>(aClient, path.c_str());
-    //Serial.printf("Result is: %s\n", *result);
-   
+    while (retries > 0) {
+        *result = Database.get<String>(aClient, path.c_str());
+
+        if (result->length() > 0 || aClient.lastError().code() == 0) {
+            break;
+        }
+
+        retries--;
+
+        // === intervalo não bloqueante de 500 ms ===
+        wait_start = millis();
+        while (millis() - wait_start < wait_time) {
+            // não bloqueia o programa — loop vazio
+            // mas permite que outras coisas rodem no loop principal
+            yield();
+        }
+        // =========================================
+    }
 }
 void FBase::awaitSet(String &path, String value, int type)
 {
     if (!isReady()) return;
-    if(type == INT)
-        Database.set<int>(aClient, path.c_str(), value.toInt());
-    if(type == FLOAT)
-        Database.set<float>(aClient, path.c_str(), value.toFloat());
-    if(type == STRING)
-        Database.set<String>(aClient, path.c_str(), value.c_str());
-    if(type == BOOL)
-        Database.set<bool>(aClient, path.c_str(), value.toInt());
+    
+    int retries = 3;
+    bool success = false;
+    
+    while (retries > 0 && !success) {
+
+        if(type == INT)
+            success = Database.set<int>(aClient, path.c_str(), value.toInt());
+        else if(type == FLOAT)
+            success = Database.set<float>(aClient, path.c_str(), value.toFloat());
+        else if(type == STRING)
+            success = Database.set<String>(aClient, path.c_str(), value.c_str());
+        else if(type == BOOL)
+            success = Database.set<bool>(aClient, path.c_str(), value.toInt());
+            
+        if (!success) {
+            retries--;
+
+            // ===== intervalo não bloqueante (500ms) =====
+            unsigned long start = millis();
+            while (millis() - start < 500) {
+                yield(); // permite WiFi/RTOS rodarem no ESP
+            }
+            // ============================================
+        }
+    }
 }
+
 
