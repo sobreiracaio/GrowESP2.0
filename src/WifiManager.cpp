@@ -24,6 +24,10 @@ bool WifiManager::wifiInit()
         startPortal();
         return false;
     }
+    wifiClient.setTimeout(2);
+
+    WiFi.setAutoReconnect(true);
+    WiFi.persistent(false);
 
     WiFi.begin(ssid.c_str(), password.c_str());
     
@@ -202,6 +206,7 @@ void WifiManager::loop()
             connectToWiFi();
         }
     }
+    wifiClient.setTimeout(2);
 }
 
 void WifiManager::connectToWiFi() 

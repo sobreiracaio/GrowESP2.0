@@ -42,7 +42,7 @@ bool FBase::init() {
     
     // Configurar SSL
     ssl_client.setInsecure();
-    
+    ssl_client.setTimeout(2);
     // Inicializar o app com autenticação
     //Serial.println("🔐 Autenticando...");
     initializeApp(aClient, app, getAuth(user_auth), processData, "authTask");
@@ -88,6 +88,7 @@ bool FBase::stopApp()
 void FBase::loop() {
     app.loop();
     Database.loop();
+    ssl_client.setTimeout(2);
 }
 
 bool FBase::isReady() {
