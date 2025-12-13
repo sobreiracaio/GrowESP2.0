@@ -170,7 +170,12 @@ void Display::adjustScreen(float *menu)
 {
     static float submenu = 0;
     float value = 0;
+    unsigned long timeout = 50000;
 
+    if(btn[0]->getIdle(timeout) && btn[1]->getIdle(timeout) && btn[2]->getIdle(timeout) && btn[3]->getIdle(timeout))
+    {
+        submenu = 0;
+    }
     
     
     switch ((int)submenu)   
@@ -586,6 +591,13 @@ void Display::confScreen(float *menu)
     static float submenu = 0;
     float dummy_value = 0;
     static float lastSubmenu = -1;
+
+    unsigned long timeout = 50000;
+
+    if(btn[0]->getIdle(timeout) && btn[1]->getIdle(timeout) && btn[2]->getIdle(timeout) && btn[3]->getIdle(timeout))
+    {
+        submenu = 0;
+    }
     
    
     

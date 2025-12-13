@@ -17,6 +17,7 @@ Button::Button(uint8_t pin_number) : pin(pin_number), lastReading(false), stable
     lastDebounceTime(0), pressStartTime(0), isIdle(false) 
     {
         lastActivity = millis();
+         
     }
 
 
@@ -120,12 +121,12 @@ void Button::idleButton()
     isIdle = false;
 }
 
-bool Button::getIdle()
+bool Button::getIdle(unsigned long timeout)
 {
     unsigned long now = millis();
     
     // Se não teve atividade por tempo suficiente → idle
-    if (!isIdle && (now - lastActivity > idleTimeout)) {
+    if (!isIdle && (now - lastActivity > timeout)) {
         isIdle = true;
     }
 
