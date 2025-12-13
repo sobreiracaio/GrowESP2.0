@@ -215,11 +215,11 @@ void fireBaseLoadData(bool isOnLoop)
         firebase->awaitGet(safeEmail + "/needChange", &needChange);
         if(needChange == "true")
         {
-            Serial1.end();
+            //Serial1.end();
             bool state = false;
             getValues();
             firebase->aSyncSetBool(safeEmail + "/needChange", state);
-            Serial1.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
+            //Serial1.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
         }
         lastSend = millis();
         return;
@@ -339,4 +339,5 @@ void loop()
     light.run(data_class.getIsRunning());
     
     fireBaseLoadData(true);
+
 }
