@@ -6,10 +6,9 @@ import threading
 import csv
 import os
 from datetime import datetime
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-from matplotlib.figure import Figure
-import matplotlib.dates as mdates
+import json
+from http.server import HTTPServer, SimpleHTTPRequestHandler
+import webbrowser
 
 # ==============================
 # CONFIGURAÇÃO FIREBASE
@@ -24,7 +23,7 @@ firebase_admin.initialize_app(cred, {
 # ==============================
 class ThemeManager:
     def __init__(self):
-        self.current_theme = "dark"  # dark ou light
+        self.current_theme = "dark"
         
     def get_colors(self):
         if self.current_theme == "dark":
@@ -37,8 +36,6 @@ class ThemeManager:
                 'button_hover': '#4d4d4d',
                 'button_active': '#2d2d2d',
                 'frame_bg': '#252525',
-                'plot_bg': '#2d2d2d',
-                'plot_fg': '#ffffff',
                 'accent': '#4CAF50'
             }
         else:
@@ -51,12 +48,380 @@ class ThemeManager:
                 'button_hover': '#d0d0d0',
                 'button_active': '#c0c0c0',
                 'frame_bg': '#ffffff',
-                'plot_bg': '#ffffff',
-                'plot_fg': '#000000',
                 'accent': '#4CAF50'
             }
 
 theme_manager = ThemeManager()
+
+# ==============================
+# SERVIDOR HTTP PARA GRÁFICOS
+# ==============================
+class GraphDataHandler(SimpleHTTPRequestHandler):
+    csv_file = None
+    firebase_app = None
+    
+    def do_GET(self):
+        if self.path == '/data':
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.end_headers()
+            
+            data = self.get_chart_data()
+            self.wfile.write(json.dumps(data).encode())
+        else:
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            self.wfile.write(self.get_html().encode())
+    
+    def get_chart_data(self):
+        if not os.path.isfile(self.csv_file):
+            return {'error': 'No data'}
+        
+        timestamps = []
+        humidity = []
+        soil = []
+        temperature = []
+        
+        try:
+            with open(self.csv_file, 'r') as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    timestamps.append(row['timestamp'])
+                    humidity.append(float(row['humidity']))
+                    soil.append(float(row['soil']))
+                    temperature.append(float(row['temperature']))
+            
+            # Buscar configs do Firebase
+            targets = {'humidity': 50, 'soil': 50, 'temperature': 25}
+            tolerances = {'humidity': 5, 'soil': 5, 'temperature': 3}
+            
+            if self.firebase_app:
+                try:
+                    humid_data = self.firebase_app.get_ref("InsertedData/Sensor/Humid").get()
+                    soil_data = self.firebase_app.get_ref("InsertedData/Sensor/Soil").get()
+                    temp_data = self.firebase_app.get_ref("InsertedData/Sensor/Temperature").get()
+                    
+                    if humid_data:
+                        targets['humidity'] = float(humid_data.get("TargetHumid", 50))
+                        tolerances['humidity'] = float(humid_data.get("HumidTolerance", 5))
+                    if soil_data:
+                        targets['soil'] = float(soil_data.get("TargetSoil", 50))
+                        tolerances['soil'] = float(soil_data.get("SoilTolerance", 5))
+                    if temp_data:
+                        targets['temperature'] = float(temp_data.get("TargetTemp", 25))
+                        tolerances['temperature'] = float(temp_data.get("TempTolerance", 3))
+                except:
+                    pass
+            
+            return {
+                'timestamps': timestamps[-100:],  # Últimos 100 pontos
+                'humidity': humidity[-100:],
+                'soil': soil[-100:],
+                'temperature': temperature[-100:],
+                'targets': targets,
+                'tolerances': tolerances
+            }
+        except Exception as e:
+            return {'error': str(e)}
+    
+    def get_html(self):
+        theme = 'dark' if theme_manager.current_theme == 'dark' else 'light'
+        bg_color = '#1e1e1e' if theme == 'dark' else '#ffffff'
+        text_color = '#ffffff' if theme == 'dark' else '#000000'
+        
+        return f'''
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0"></script>
+    <style>
+        body {{
+            margin: 0;
+            padding: 10px;
+            background-color: {bg_color};
+            color: {text_color};
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+        }}
+        .controls {{
+            margin-bottom: 10px;
+            text-align: center;
+        }}
+        button {{
+            padding: 8px 16px;
+            margin: 3px;
+            border: none;
+            border-radius: 5px;
+            background: #4CAF50;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 12px;
+        }}
+        button:hover {{ background: #45a049; }}
+        button.active {{ background: #2196F3; }}
+        .chart-container {{
+            position: relative;
+            height: calc(100vh - 70px);
+            width: 100%;
+        }}
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button id="btnHumidity" class="active" onclick="showChart('humidity')">💧 Umidade</button>
+        <button id="btnSoil" onclick="showChart('soil')">🌱 Solo</button>
+        <button id="btnTemp" onclick="showChart('temperature')">🌡️ Temperatura</button>
+        <button id="btnGeneral" onclick="showChart('general')">📊 Geral</button>
+    </div>
+    
+    <div class="chart-container">
+        <canvas id="myChart"></canvas>
+    </div>
+
+    <script>
+        let chart = null;
+        let currentView = 'humidity';
+        let chartData = null;
+
+        async function fetchData() {{
+            try {{
+                const response = await fetch('/data');
+                chartData = await response.json();
+                return chartData;
+            }} catch (error) {{
+                console.error('Erro:', error);
+                return null;
+            }}
+        }}
+
+        function createSensorChart(data, sensor) {{
+            const ctx = document.getElementById('myChart').getContext('2d');
+            
+            const labels = {{ 
+                humidity: 'Umidade (%)', 
+                soil: 'Solo (%)', 
+                temperature: 'Temperatura (°C)' 
+            }};
+            const colors = {{ 
+                humidity: '#2196F3', 
+                soil: '#8B4513', 
+                temperature: '#FF5722' 
+            }};
+            
+            const target = data.targets[sensor];
+            const tolerance = data.tolerances[sensor];
+            
+            if (chart) {{
+                // Atualizar dados sem recriar
+                chart.data.labels = data.timestamps;
+                chart.data.datasets[0].data = data[sensor];
+                chart.data.datasets[1].data = Array(data.timestamps.length).fill(target);
+                chart.data.datasets[2].data = Array(data.timestamps.length).fill(target + tolerance);
+                chart.data.datasets[3].data = Array(data.timestamps.length).fill(target - tolerance);
+                chart.update('none'); // Update sem animação
+            }} else {{
+                chart = new Chart(ctx, {{
+                    type: 'line',
+                    data: {{
+                        labels: data.timestamps,
+                        datasets: [
+                            {{
+                                label: labels[sensor],
+                                data: data[sensor],
+                                borderColor: colors[sensor],
+                                backgroundColor: colors[sensor] + '20',
+                                borderWidth: 2.5,
+                                tension: 0.4,
+                                fill: false,
+                                pointRadius: 1,
+                                pointHoverRadius: 5
+                            }},
+                            {{
+                                label: 'Target',
+                                data: Array(data.timestamps.length).fill(target),
+                                borderColor: '#4CAF50',
+                                borderWidth: 2,
+                                borderDash: [5, 5],
+                                fill: false,
+                                pointRadius: 0
+                            }},
+                            {{
+                                label: 'Limite Superior',
+                                data: Array(data.timestamps.length).fill(target + tolerance),
+                                borderColor: '#FF5722',
+                                borderWidth: 1.5,
+                                borderDash: [10, 5],
+                                fill: false,
+                                pointRadius: 0
+                            }},
+                            {{
+                                label: 'Limite Inferior',
+                                data: Array(data.timestamps.length).fill(target - tolerance),
+                                borderColor: '#FF5722',
+                                borderWidth: 1.5,
+                                borderDash: [10, 5],
+                                fill: false,
+                                pointRadius: 0
+                            }}
+                        ]
+                    }},
+                    options: {{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {{
+                            mode: 'index',
+                            intersect: false
+                        }},
+                        plugins: {{
+                            legend: {{
+                                display: true,
+                                labels: {{ color: '{text_color}' }}
+                            }},
+                            tooltip: {{
+                                backgroundColor: '{bg_color}dd',
+                                titleColor: '{text_color}',
+                                bodyColor: '{text_color}',
+                                borderColor: '{text_color}',
+                                borderWidth: 1
+                            }}
+                        }},
+                        scales: {{
+                            x: {{
+                                ticks: {{ color: '{text_color}', maxRotation: 45, minRotation: 45 }},
+                                grid: {{ color: 'rgba(128,128,128,0.2)' }}
+                            }},
+                            y: {{
+                                ticks: {{ color: '{text_color}' }},
+                                grid: {{ color: 'rgba(128,128,128,0.2)' }}
+                            }}
+                        }},
+                        animation: false
+                    }}
+                }});
+            }}
+        }}
+
+        function createGeneralChart(data) {{
+            const ctx = document.getElementById('myChart').getContext('2d');
+            
+            if (chart) {{
+                chart.data.labels = data.timestamps;
+                chart.data.datasets[0].data = data.humidity;
+                chart.data.datasets[1].data = data.soil;
+                chart.data.datasets[2].data = data.temperature;
+                chart.update('none');
+            }} else {{
+                chart = new Chart(ctx, {{
+                    type: 'line',
+                    data: {{
+                        labels: data.timestamps,
+                        datasets: [
+                            {{
+                                label: 'Umidade',
+                                data: data.humidity,
+                                borderColor: '#2196F3',
+                                borderWidth: 2,
+                                tension: 0.4,
+                                fill: false,
+                                pointRadius: 1
+                            }},
+                            {{
+                                label: 'Solo',
+                                data: data.soil,
+                                borderColor: '#8B4513',
+                                borderWidth: 2,
+                                tension: 0.4,
+                                fill: false,
+                                pointRadius: 1
+                            }},
+                            {{
+                                label: 'Temperatura',
+                                data: data.temperature,
+                                borderColor: '#FF5722',
+                                borderWidth: 2,
+                                tension: 0.4,
+                                fill: false,
+                                pointRadius: 1
+                            }}
+                        ]
+                    }},
+                    options: {{
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        interaction: {{
+                            mode: 'index',
+                            intersect: false
+                        }},
+                        plugins: {{
+                            legend: {{
+                                display: true,
+                                labels: {{ color: '{text_color}' }}
+                            }},
+                            tooltip: {{
+                                backgroundColor: '{bg_color}dd',
+                                titleColor: '{text_color}',
+                                bodyColor: '{text_color}',
+                                borderColor: '{text_color}',
+                                borderWidth: 1
+                            }}
+                        }},
+                        scales: {{
+                            x: {{
+                                ticks: {{ color: '{text_color}', maxRotation: 45, minRotation: 45 }},
+                                grid: {{ color: 'rgba(128,128,128,0.2)' }}
+                            }},
+                            y: {{
+                                ticks: {{ color: '{text_color}' }},
+                                grid: {{ color: 'rgba(128,128,128,0.2)' }}
+                            }}
+                        }},
+                        animation: false
+                    }}
+                }});
+            }}
+        }}
+
+        async function showChart(view) {{
+            currentView = view;
+            
+            document.querySelectorAll('button').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn' + view.charAt(0).toUpperCase() + view.slice(1)).classList.add('active');
+            
+            const data = await fetchData();
+            if (!data || data.error) return;
+            
+            if (view === 'general') {{
+                createGeneralChart(data);
+            }} else {{
+                createSensorChart(data, view);
+            }}
+        }}
+
+        async function updateChart() {{
+            const data = await fetchData();
+            if (!data || data.error) return;
+            
+            if (currentView === 'general') {{
+                createGeneralChart(data);
+            }} else {{
+                createSensorChart(data, currentView);
+            }}
+        }}
+
+        // Inicializar
+        showChart('humidity');
+        setInterval(updateChart, 10000);
+    </script>
+</body>
+</html>
+'''
+    
+    def log_message(self, format, *args):
+        pass
 
 # ==============================
 # BOTÃO CUSTOMIZADO
@@ -87,7 +452,6 @@ class RoundedButton(tk.Canvas):
         else:
             color = self.colors['button_bg']
             
-        # Desenhar retângulo arredondado
         radius = 10
         width = self.winfo_reqwidth()
         height = self.winfo_reqheight()
@@ -99,7 +463,6 @@ class RoundedButton(tk.Canvas):
         self.create_rectangle(radius, 0, width-radius, height, fill=color, outline='')
         self.create_rectangle(0, radius, width, height-radius, fill=color, outline='')
         
-        # Texto
         self.create_text(width/2, height/2, text=self.text, fill=self.colors['fg'], 
                         font=('Arial', 10, 'bold'))
     
@@ -135,17 +498,14 @@ class LoginScreen:
         colors = theme_manager.get_colors()
         self.root.configure(bg=colors['bg'])
 
-        # Frame principal
         main_frame = tk.Frame(root, bg=colors['bg'])
         main_frame.pack(expand=True, fill='both', padx=20, pady=20)
 
-        # Título
         title_label = tk.Label(main_frame, text="🌿 Growstation", 
                               font=("Arial", 18, "bold"), 
                               bg=colors['bg'], fg=colors['fg'])
         title_label.pack(pady=15)
 
-        # Email
         tk.Label(main_frame, text="Email:", bg=colors['bg'], fg=colors['fg']).pack(pady=2)
         self.email_entry = tk.Entry(main_frame, width=30, bg=colors['entry_bg'], 
                                     fg=colors['entry_fg'], insertbackground=colors['fg'],
@@ -153,10 +513,8 @@ class LoginScreen:
         self.email_entry.pack(pady=5, ipady=5)
         self.email_entry.bind('<Return>', lambda e: self.pass_entry.focus())
 
-        # Senha
         tk.Label(main_frame, text="Senha:", bg=colors['bg'], fg=colors['fg']).pack(pady=2)
         
-        # Frame para senha e botão de mostrar
         pass_frame = tk.Frame(main_frame, bg=colors['bg'])
         pass_frame.pack(pady=5)
         
@@ -170,12 +528,10 @@ class LoginScreen:
                                           width=40, height=34)
         self.show_pass_btn.pack(side='left', padx=5)
 
-        # Botão entrar
         login_btn = RoundedButton(main_frame, text="Entrar", command=self.try_login,
                                  width=120, height=40)
         login_btn.pack(pady=15)
 
-        # Foco inicial no email
         self.email_entry.focus()
 
     def toggle_password(self):
@@ -223,19 +579,18 @@ class FirebaseApp:
         self.root.geometry("1400x900")
         self.user_path = f"{safe_email}/"
         self.csv_file = f"growstation_data_{safe_email}.csv"
-        self.graphs_initialized = False
-        self.current_canvas = None
-        self.current_toolbar = None
-        self.graph_update_interval = 10  # segundos
-        self.current_graph_type = None
+        self.http_server = None
+        self.server_thread = None
+        self.server_port = 8765
+        self.graph_window = None
         
         colors = theme_manager.get_colors()
         self.root.configure(bg=colors['bg'])
 
-        # Configurar estilo matplotlib
-        plt.style.use('dark_background' if theme_manager.current_theme == 'dark' else 'default')
+        # Iniciar servidor HTTP
+        self.start_http_server()
 
-        # Frame superior para botão de tema
+        # Frame superior
         top_frame = tk.Frame(root, bg=colors['bg'])
         top_frame.pack(fill='x', padx=10, pady=5)
         
@@ -244,25 +599,32 @@ class FirebaseApp:
                                  command=self.toggle_theme, width=100, height=30)
         theme_btn.pack(side='right')
 
-        # Notebook para abas
+        # Notebook
         style = ttk.Style()
         self.configure_theme()
         
         self.notebook = ttk.Notebook(root)
         self.notebook.pack(fill="both", expand=True, padx=5, pady=5)
 
-        # ABA 1: Configurações
         self.create_config_tab()
-        
-        # ABA 2: Gráficos
         self.create_graphs_tab()
 
-        # Bind para detectar mudança de aba
-        self.notebook.bind("<<NotebookTabChanged>>", self.on_tab_changed)
-
-        # Carrega dados iniciais
         self.load_initial_data()
         self.update_data()
+
+    def start_http_server(self):
+        GraphDataHandler.csv_file = self.csv_file
+        GraphDataHandler.firebase_app = self
+        
+        def run_server():
+            try:
+                self.http_server = HTTPServer(('localhost', self.server_port), GraphDataHandler)
+                self.http_server.serve_forever()
+            except Exception as e:
+                print(f"Erro no servidor: {e}")
+        
+        self.server_thread = threading.Thread(target=run_server, daemon=True)
+        self.server_thread.start()
 
     def configure_theme(self):
         colors = theme_manager.get_colors()
@@ -288,44 +650,42 @@ class FirebaseApp:
         messagebox.showinfo("Tema Alterado", "Reinicie o aplicativo para aplicar o novo tema.")
 
     # ==============================
-    # ABA DE CONFIGURAÇÕES
+    # ABA DE CONFIGURAÇÕES (2 COLUNAS)
     # ==============================
     def create_config_tab(self):
         colors = theme_manager.get_colors()
         config_frame = ttk.Frame(self.notebook)
         self.notebook.add(config_frame, text="⚙️ Configurações")
 
-        # Scroll
-        container = ttk.Frame(config_frame)
-        container.pack(fill="both", expand=True)
-        canvas = tk.Canvas(container, bg=colors['bg'], highlightthickness=0)
-        scrollbar = ttk.Scrollbar(container, orient="vertical", command=canvas.yview)
-        self.scrollable_frame = ttk.Frame(canvas)
-        self.scrollable_frame.bind(
-            "<Configure>",
-            lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        canvas.create_window((0, 0), window=self.scrollable_frame, anchor="nw")
-        canvas.configure(yscrollcommand=scrollbar.set)
-        canvas.pack(side="left", fill="both", expand=True)
-        scrollbar.pack(side="right", fill="y")
+        # Título
+        ttk.Label(config_frame, text="Growstation Monitor", font=("Arial", 16, "bold")).pack(pady=10)
 
-        ttk.Label(self.scrollable_frame, text="Growstation Monitor", font=("Arial", 16, "bold")).pack(pady=10)
+        # Container para 2 colunas
+        columns_frame = tk.Frame(config_frame, bg=colors['bg'])
+        columns_frame.pack(fill='both', expand=True, padx=10, pady=5)
 
-        # ==============================
+        # COLUNA ESQUERDA
+        left_column = tk.Frame(columns_frame, bg=colors['bg'])
+        left_column.pack(side='left', fill='both', expand=True, padx=5)
+
+        # COLUNA DIREITA
+        right_column = tk.Frame(columns_frame, bg=colors['bg'])
+        right_column.pack(side='right', fill='both', expand=True, padx=5)
+
+        # === COLUNA ESQUERDA ===
+        
         # CAMPOS GLOBAIS
-        # ==============================
-        self.frame_global = ttk.LabelFrame(self.scrollable_frame, text="🌐 Configurações Globais")
-        self.frame_global.pack(padx=10, pady=5, fill="x")
+        self.frame_global = ttk.LabelFrame(left_column, text="🌐 Configurações Globais")
+        self.frame_global.pack(padx=5, pady=5, fill="x")
 
         ttk.Label(self.frame_global, text="_Binary URL:").grid(row=0, column=0, sticky="e", padx=5, pady=3)
-        self.binary_entry = ttk.Entry(self.frame_global, width=50)
+        self.binary_entry = ttk.Entry(self.frame_global, width=40)
         self.binary_entry.grid(row=0, column=1, sticky="w", padx=5, pady=3)
         self.binary_current = ttk.Label(self.frame_global, text="Atual: ---", foreground="gray", font=("Arial", 8))
         self.binary_current.grid(row=1, column=1, sticky="w", padx=5)
 
         ttk.Label(self.frame_global, text="_Token:").grid(row=2, column=0, sticky="e", padx=5, pady=3)
-        self.token_entry = ttk.Entry(self.frame_global, width=50, show="*")
+        self.token_entry = ttk.Entry(self.frame_global, width=40, show="*")
         self.token_entry.grid(row=2, column=1, sticky="w", padx=5, pady=3)
         self.token_current = ttk.Label(self.frame_global, text="Atual: ---", foreground="gray", font=("Arial", 8))
         self.token_current.grid(row=3, column=1, sticky="w", padx=5)
@@ -349,11 +709,9 @@ class FirebaseApp:
         RoundedButton(save_btn_frame, text="💾 Gravar Config Globais", 
                      command=self.save_global_config, width=200).pack()
 
-        # ==============================
         # ATUADORES
-        # ==============================
-        self.frame_actuator = ttk.LabelFrame(self.scrollable_frame, text="⚙️ Status Atuadores")
-        self.frame_actuator.pack(padx=10, pady=5, fill="x")
+        self.frame_actuator = ttk.LabelFrame(left_column, text="⚙️ Status Atuadores")
+        self.frame_actuator.pack(padx=5, pady=5, fill="x")
         self.actuator_labels = {}
         actuator_names = ["Cooler", "Dehumid", "Heater", "Humid", "Light", "Pump"]
         for i, name in enumerate(actuator_names):
@@ -362,11 +720,9 @@ class FirebaseApp:
             lbl.grid(row=i, column=1, sticky="w", padx=5, pady=3)
             self.actuator_labels[name] = lbl
 
-        # ==============================
         # SENSORES
-        # ==============================
-        self.frame_sensor = ttk.LabelFrame(self.scrollable_frame, text="📊 Leituras Sensores")
-        self.frame_sensor.pack(padx=10, pady=5, fill="x")
+        self.frame_sensor = ttk.LabelFrame(left_column, text="📊 Leituras Sensores")
+        self.frame_sensor.pack(padx=5, pady=5, fill="x")
         self.sensor_labels = {}
         for i, name in enumerate(["Humidity", "Soil", "Temperature"]):
             ttk.Label(self.frame_sensor, text=f"{name}:").grid(row=i, column=0, sticky="e", padx=5, pady=3)
@@ -374,11 +730,11 @@ class FirebaseApp:
             lbl.grid(row=i, column=1, sticky="w", padx=5, pady=3)
             self.sensor_labels[name] = lbl
 
-        # ==============================
+        # === COLUNA DIREITA ===
+        
         # CONFIGURAÇÕES HUMID
-        # ==============================
-        self.frame_humid = ttk.LabelFrame(self.scrollable_frame, text="💧 Configurações Umidade")
-        self.frame_humid.pack(padx=10, pady=5, fill="x")
+        self.frame_humid = ttk.LabelFrame(right_column, text="💧 Configurações Umidade")
+        self.frame_humid.pack(padx=5, pady=5, fill="x")
         vcmd_float = (self.root.register(lambda P: P.replace(".", "").replace("-", "").isdigit() or P == "" or P == "-"), "%P")
         
         ttk.Label(self.frame_humid, text="Target Humidity:").grid(row=0, column=0, sticky="e", padx=5, pady=3)
@@ -393,11 +749,9 @@ class FirebaseApp:
         btn_frame_humid.grid(row=2, column=0, columnspan=2, pady=10)
         RoundedButton(btn_frame_humid, text="💾 Gravar", command=self.save_humid_config, width=120).pack()
 
-        # ==============================
         # CONFIGURAÇÕES SOIL
-        # ==============================
-        self.frame_soil = ttk.LabelFrame(self.scrollable_frame, text="🌱 Configurações Solo")
-        self.frame_soil.pack(padx=10, pady=5, fill="x")
+        self.frame_soil = ttk.LabelFrame(right_column, text="🌱 Configurações Solo")
+        self.frame_soil.pack(padx=5, pady=5, fill="x")
 
         ttk.Label(self.frame_soil, text="Target Soil:").grid(row=0, column=0, sticky="e", padx=5, pady=3)
         self.target_soil = ttk.Entry(self.frame_soil, width=8, validate="key", validatecommand=vcmd_float)
@@ -419,11 +773,9 @@ class FirebaseApp:
         btn_frame_soil.grid(row=4, column=0, columnspan=2, pady=10)
         RoundedButton(btn_frame_soil, text="💾 Gravar", command=self.save_soil_config, width=120).pack()
 
-        # ==============================
         # CONFIGURAÇÕES TEMPERATURE
-        # ==============================
-        self.frame_temp = ttk.LabelFrame(self.scrollable_frame, text="🌡️ Configurações Temperatura")
-        self.frame_temp.pack(padx=10, pady=5, fill="x")
+        self.frame_temp = ttk.LabelFrame(right_column, text="🌡️ Configurações Temperatura")
+        self.frame_temp.pack(padx=5, pady=5, fill="x")
 
         ttk.Label(self.frame_temp, text="Target Temperature:").grid(row=0, column=0, sticky="e", padx=5, pady=3)
         self.target_temp = ttk.Entry(self.frame_temp, width=8, validate="key", validatecommand=vcmd_float)
@@ -437,11 +789,9 @@ class FirebaseApp:
         btn_frame_temp.grid(row=2, column=0, columnspan=2, pady=10)
         RoundedButton(btn_frame_temp, text="💾 Gravar", command=self.save_temp_config, width=120).pack()
 
-        # ==============================
         # HORÁRIOS DA LUZ
-        # ==============================
-        self.frame_light = ttk.LabelFrame(self.scrollable_frame, text="🕒 Horário da Luz")
-        self.frame_light.pack(padx=10, pady=5, fill="x")
+        self.frame_light = ttk.LabelFrame(right_column, text="🕒 Horário da Luz")
+        self.frame_light.pack(padx=5, pady=5, fill="x")
         vcmd_int = (self.root.register(lambda P: P.isdigit() or P == ""), "%P")
 
         ttk.Label(self.frame_light, text="Hora ON:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
@@ -462,257 +812,42 @@ class FirebaseApp:
         btn_frame_light.grid(row=2, column=0, columnspan=4, pady=10)
         RoundedButton(btn_frame_light, text="💾 Gravar Horário", command=self.save_times, width=150).pack()
 
-        self.status_label = ttk.Label(self.scrollable_frame, text="", foreground="gray")
+        # Status label no final
+        self.status_label = ttk.Label(config_frame, text="", foreground="gray")
         self.status_label.pack(pady=5)
 
     # ==============================
-    # ABA DE GRÁFICOS
+    # ABA DE GRÁFICOS COM WEBVIEW
     # ==============================
     def create_graphs_tab(self):
         colors = theme_manager.get_colors()
         graphs_frame = ttk.Frame(self.notebook)
         self.notebook.add(graphs_frame, text="📊 Gráficos")
 
-        # Frame de controle
-        control_frame = tk.Frame(graphs_frame, bg=colors['bg'])
-        control_frame.pack(pady=10, fill='x')
-
-        ttk.Label(control_frame, text="Intervalo de atualização (segundos):").pack(side='left', padx=10)
-        
-        self.interval_var = tk.StringVar(value="10")
-        interval_spinbox = ttk.Spinbox(control_frame, from_=1, to=60, textvariable=self.interval_var, 
-                                       width=5, command=self.update_interval)
-        interval_spinbox.pack(side='left', padx=5)
-
-        # Botões de gráficos
-        buttons_frame = tk.Frame(graphs_frame, bg=colors['bg'])
-        buttons_frame.pack(pady=10)
-
-        RoundedButton(buttons_frame, text="💧 Umidade", 
-                     command=lambda: self.show_graph("Humidity"), width=150).pack(side='left', padx=5)
-        RoundedButton(buttons_frame, text="🌱 Solo", 
-                     command=lambda: self.show_graph("Soil"), width=150).pack(side='left', padx=5)
-        RoundedButton(buttons_frame, text="🌡️ Temperatura", 
-                     command=lambda: self.show_graph("Temperature"), width=150).pack(side='left', padx=5)
-        RoundedButton(buttons_frame, text="📊 Geral", 
-                     command=lambda: self.show_graph("Geral"), width=150).pack(side='left', padx=5)
-
-        # Frame para exibir o gráfico
-        self.graph_display_frame = tk.Frame(graphs_frame, bg=colors['bg'])
-        self.graph_display_frame.pack(fill='both', expand=True, padx=10, pady=10)
-
-    def update_interval(self):
+        # Usar tkinterweb se disponível, senão iframe
         try:
-            self.graph_update_interval = int(self.interval_var.get())
-        except:
-            self.graph_update_interval = 10
-
-    def on_tab_changed(self, event):
-        selected_tab = event.widget.tab('current')['text']
-        if selected_tab == "📊 Gráficos" and not self.graphs_initialized:
-            self.graphs_initialized = True
-            self.update_graphs_loop()
-
-    def show_graph(self, graph_type):
-        self.current_graph_type = graph_type
-        self.generate_and_display_graph()
-
-    def generate_and_display_graph(self):
-        # Limpar frame anterior
-        for widget in self.graph_display_frame.winfo_children():
-            widget.destroy()
-        
-        if self.current_canvas:
-            self.current_canvas = None
-        if self.current_toolbar:
-            self.current_toolbar = None
-
-        if not os.path.isfile(self.csv_file):
-            ttk.Label(self.graph_display_frame, text="⏳ Aguardando coleta de dados...", 
-                     font=("Arial", 14)).pack(pady=50)
-            return
-
-        try:
-            # Ler CSV
-            timestamps = []
-            humidity = []
-            soil = []
-            temperature = []
-            actuators_data = {
-                'cooler': [], 'dehumid': [], 'heater': [], 
-                'humid': [], 'light': [], 'pump': []
-            }
-
-            with open(self.csv_file, 'r') as f:
-                reader = csv.DictReader(f)
-                for row in reader:
-                    timestamps.append(datetime.strptime(row['timestamp'], '%Y-%m-%d %H:%M:%S'))
-                    humidity.append(float(row['humidity']))
-                    soil.append(float(row['soil']))
-                    temperature.append(float(row['temperature']))
-                    for key in actuators_data:
-                        actuators_data[key].append(int(row[key]))
-
-            if len(timestamps) == 0:
-                ttk.Label(self.graph_display_frame, text="📭 Sem dados suficientes", 
-                         font=("Arial", 14)).pack(pady=50)
-                return
-
-            # Obter targets e tolerâncias
-            humid_data = self.get_ref("InsertedData/Sensor/Humid").get()
-            soil_data = self.get_ref("InsertedData/Sensor/Soil").get()
-            temp_data = self.get_ref("InsertedData/Sensor/Temperature").get()
-
-            target_humid = float(humid_data.get("TargetHumid", 50)) if humid_data else 50
-            humid_tol = float(humid_data.get("HumidTolerance", 5)) if humid_data else 5
-            target_soil = float(soil_data.get("TargetSoil", 50)) if soil_data else 50
-            soil_tol = float(soil_data.get("SoilTolerance", 5)) if soil_data else 5
-            target_temp = float(temp_data.get("TargetTemp", 25)) if temp_data else 25
-            temp_tol = float(temp_data.get("TempTolerance", 3)) if temp_data else 3
-
-            # Criar figura
-            colors = theme_manager.get_colors()
-            fig = Figure(figsize=(12, 7), facecolor=colors['plot_bg'])
+            import tkinterweb
+            web_frame = tkinterweb.HtmlFrame(graphs_frame, messages_enabled=False)
+            web_frame.load_url(f"http://localhost:{self.server_port}")
+            web_frame.pack(fill='both', expand=True)
+        except ImportError:
+            # Fallback: Label com instruções e botão para abrir
+            info_frame = tk.Frame(graphs_frame, bg=colors['bg'])
+            info_frame.pack(expand=True)
             
-            if self.current_graph_type == "Humidity":
-                self.plot_sensor_graph(fig, timestamps, humidity, target_humid, humid_tol, 
-                                      "Umidade (%)", "💧 Histórico de Umidade")
-            elif self.current_graph_type == "Soil":
-                self.plot_sensor_graph(fig, timestamps, soil, target_soil, soil_tol, 
-                                      "Umidade do Solo (%)", "🌱 Histórico do Solo")
-            elif self.current_graph_type == "Temperature":
-                self.plot_sensor_graph(fig, timestamps, temperature, target_temp, temp_tol, 
-                                      "Temperatura (°C)", "🌡️ Histórico de Temperatura")
-            elif self.current_graph_type == "Geral":
-                self.plot_general_graph(fig, timestamps, humidity, soil, temperature, actuators_data,
-                                       target_humid, humid_tol, target_soil, soil_tol, target_temp, temp_tol)
+            ttk.Label(info_frame, text="📈 Gráficos Interativos", 
+                     font=("Arial", 16, "bold")).pack(pady=20)
             
-            # Exibir no tkinter
-            self.current_canvas = FigureCanvasTkAgg(fig, self.graph_display_frame)
-            self.current_canvas.draw()
-            self.current_canvas.get_tk_widget().pack(fill='both', expand=True)
+            ttk.Label(info_frame, 
+                     text="Para exibir os gráficos embutidos, instale:\npip install tkinterweb\n\n"
+                          "Ou clique no botão abaixo para abrir no navegador:",
+                     justify='center', font=("Arial", 11)).pack(pady=10)
             
-            # Adicionar toolbar de navegação
-            self.current_toolbar = NavigationToolbar2Tk(self.current_canvas, self.graph_display_frame)
-            self.current_toolbar.update()
+            RoundedButton(info_frame, text="🌐 Abrir Gráficos no Navegador",
+                         command=self.open_browser_graphs, width=250, height=50).pack(pady=20)
 
-        except Exception as e:
-            ttk.Label(self.graph_display_frame, text=f"❌ Erro: {str(e)}", 
-                     font=("Arial", 12), foreground="red").pack(pady=50)
-
-    def plot_sensor_graph(self, fig, timestamps, values, target, tolerance, ylabel, title):
-        colors = theme_manager.get_colors()
-        ax = fig.add_subplot(111)
-        
-        # Configurar fundo
-        ax.set_facecolor(colors['plot_bg'])
-        
-        # Plot principal
-        ax.plot(timestamps, values, label='Leitura', color='#2196F3', linewidth=2.5, marker='o', 
-                markersize=3, markevery=max(1, len(timestamps)//50))
-        
-        # Linha target
-        ax.axhline(y=target, color='#4CAF50', linestyle=':', linewidth=2, label=f'Target ({target})', alpha=0.8)
-        
-        # Limites
-        upper = target + tolerance
-        lower = target - tolerance
-        ax.axhline(y=upper, color='#FF5722', linestyle='--', linewidth=1.5, 
-                  label=f'Limite Superior ({upper})', alpha=0.7)
-        ax.axhline(y=lower, color='#FF5722', linestyle='--', linewidth=1.5, 
-                  label=f'Limite Inferior ({lower})', alpha=0.7)
-        
-        # Área entre limites
-        ax.fill_between(timestamps, lower, upper, color='#4CAF50', alpha=0.1)
-        
-        # Configurações
-        ax.set_xlabel('Tempo', fontsize=11, color=colors['plot_fg'])
-        ax.set_ylabel(ylabel, fontsize=11, color=colors['plot_fg'])
-        ax.set_title(title, fontsize=14, fontweight='bold', color=colors['plot_fg'], pad=20)
-        ax.legend(loc='upper left', framealpha=0.9)
-        ax.grid(True, alpha=0.3, linestyle='--')
-        ax.tick_params(colors=colors['plot_fg'])
-        
-        # Formato de data
-        ax.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-        fig.autofmt_xdate()
-        
-        fig.tight_layout()
-
-    def plot_general_graph(self, fig, timestamps, humidity, soil, temperature, actuators_data,
-                          target_humid, humid_tol, target_soil, soil_tol, target_temp, temp_tol):
-        colors = theme_manager.get_colors()
-        
-        # Criar 2 subplots
-        ax1 = fig.add_subplot(211)
-        ax2 = fig.add_subplot(212)
-        
-        ax1.set_facecolor(colors['plot_bg'])
-        ax2.set_facecolor(colors['plot_bg'])
-        
-        # ===== SUBPLOT 1: Sensores =====
-        ax1.plot(timestamps, humidity, label='Umidade', color='#2196F3', linewidth=2, marker='o', 
-                markersize=2, markevery=max(1, len(timestamps)//50))
-        ax1.plot(timestamps, soil, label='Solo', color='#8B4513', linewidth=2, marker='s', 
-                markersize=2, markevery=max(1, len(timestamps)//50))
-        ax1.plot(timestamps, temperature, label='Temperatura', color='#FF5722', linewidth=2, marker='^', 
-                markersize=2, markevery=max(1, len(timestamps)//50))
-        
-        # Linhas de target (discretas)
-        ax1.axhline(y=target_humid, color='#2196F3', linestyle=':', linewidth=1, alpha=0.4)
-        ax1.axhline(y=target_soil, color='#8B4513', linestyle=':', linewidth=1, alpha=0.4)
-        ax1.axhline(y=target_temp, color='#FF5722', linestyle=':', linewidth=1, alpha=0.4)
-        
-        ax1.set_ylabel('Valores', fontsize=11, color=colors['plot_fg'])
-        ax1.set_title('📊 Dashboard Completo - Sensores', fontsize=14, fontweight='bold', 
-                     color=colors['plot_fg'], pad=15)
-        ax1.legend(loc='upper left', framealpha=0.9, ncol=3)
-        ax1.grid(True, alpha=0.3, linestyle='--')
-        ax1.tick_params(colors=colors['plot_fg'])
-        
-        # ===== SUBPLOT 2: Atuadores =====
-        actuator_info = {
-            'cooler': {'label': 'Cooler', 'color': '#00BCD4', 'y': 5},
-            'dehumid': {'label': 'Dehumid', 'color': '#FF9800', 'y': 4},
-            'heater': {'label': 'Heater', 'color': '#F44336', 'y': 3},
-            'humid': {'label': 'Humid', 'color': '#4CAF50', 'y': 2},
-            'light': {'label': 'Light', 'color': '#FFEB3B', 'y': 1},
-            'pump': {'label': 'Pump', 'color': '#9C27B0', 'y': 0}
-        }
-        
-        for actuator, data in actuators_data.items():
-            info = actuator_info[actuator]
-            for i, (t, state) in enumerate(zip(timestamps, data)):
-                if state == 1:
-                    ax2.scatter(t, info['y'], marker='s', s=80, color=info['color'], 
-                              alpha=0.8, edgecolors='white', linewidths=0.5)
-        
-        # Configurar eixo Y com nomes dos atuadores
-        ax2.set_yticks([info['y'] for info in actuator_info.values()])
-        ax2.set_yticklabels([info['label'] for info in actuator_info.values()])
-        ax2.set_xlabel('Tempo', fontsize=11, color=colors['plot_fg'])
-        ax2.set_ylabel('Atuadores', fontsize=11, color=colors['plot_fg'])
-        ax2.set_title('⚙️ Status dos Atuadores', fontsize=12, fontweight='bold', 
-                     color=colors['plot_fg'], pad=10)
-        ax2.grid(True, alpha=0.3, linestyle='--', axis='x')
-        ax2.tick_params(colors=colors['plot_fg'])
-        
-        # Formato de data para ambos
-        ax1.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-        ax2.xaxis.set_major_formatter(mdates.DateFormatter('%H:%M'))
-        fig.autofmt_xdate()
-        
-        fig.tight_layout()
-
-    def update_graphs_loop(self):
-        if self.graphs_initialized and self.current_graph_type:
-            try:
-                self.generate_and_display_graph()
-            except Exception as e:
-                print(f"Erro ao atualizar gráfico: {e}")
-        
-        if self.graphs_initialized:
-            self.root.after(self.graph_update_interval * 1000, self.update_graphs_loop)
+    def open_browser_graphs(self):
+        webbrowser.open(f"http://localhost:{self.server_port}")
 
     # ==============================
     # FUNÇÕES AUXILIARES
@@ -858,7 +993,7 @@ class FirebaseApp:
                     'heater': 1 if actuators.get('HeaterStatus') else 0,
                     'humid': 1 if actuators.get('HumidStatus') else 0,
                     'light': 1 if actuators.get('LightStatus') else 0,
-                    'pump': 1 if actuators.get('PumpStatus') else 0
+                    'pump': 1 if actuators.get('PumpStatus') else 0,
                 })
         except Exception as e:
             print(f"Erro ao salvar CSV: {e}")
