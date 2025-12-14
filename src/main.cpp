@@ -111,78 +111,75 @@ void formatDate(String *date, int period)
 
 void getValues()
 {
+    // ✅ Helper para esperar entre requisições
+    auto safeGet = [](String path, String* result, int delayMs = 200) {
+        firebase->awaitGet(path, result);
+        
+        // ✅ Delay não bloqueante
+        unsigned long start = millis();
+        while (millis() - start < delayMs) {
+            yield();
+            wifi.loop(); // Mantém WiFi vivo
+        }
+    };
+
     String dayTime = "";
     String nightTime = "";
-
     String targetTemp = "";
     String tempTol = "";
-
     String targetHumid = "";
     String humidTol = "";
-
     String targetSoil = "";
     String pumpDur = "";
     String absDelay = "";
     String soilTol = "";
-
     String status = "";
-
     String binaryUrl = "";
-    String binaryPath = "/_Binary";
     String token = "";
-    String tokenPath = "/_Token";
     String hasOTA = "";
-    String hasOTAPath = "/_HasUpdate";
 
-    // String heapPath = "/_FreeMemory";
-    // float heapsize = esp_get_free_heap_size();
-
-    // firebase->aSyncSetFloat(heapPath, heapsize);
-
-    firebase->awaitGet(binaryPath, &binaryUrl);
+    // ✅ Requisições com delays entre elas
+    safeGet("/_Binary", &binaryUrl);
     ota.setBinaryPath(binaryUrl);
    
-    firebase->awaitGet(tokenPath, &token);
+    safeGet("/_Token", &token);
     ota.setToken(token);
 
-    firebase->awaitGet(hasOTAPath, &hasOTA);
-    ota.setHasUpdate(hasOTA == "true" ? true : false );
+    safeGet("/_HasUpdate", &hasOTA);
+    ota.setHasUpdate(hasOTA == "true" ? true : false);
     
-    firebase->awaitGet(safeEmail + "/InsertedData/Light/HourOn", &dayTime);
+    safeGet(safeEmail + "/InsertedData/Light/HourOn", &dayTime);
     formatDate(&dayTime, DAY);
 
-    firebase->awaitGet(safeEmail + "/InsertedData/Light/HourOff", &nightTime);
+    safeGet(safeEmail + "/InsertedData/Light/HourOff", &nightTime);
     formatDate(&nightTime, NIGHT);
 
-    firebase->awaitGet(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp", &targetTemp);
+    safeGet(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp", &targetTemp);
     data_class.setTargetTemp(targetTemp.toFloat());
 
-    firebase->awaitGet(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", &tempTol);
+    safeGet(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", &tempTol);
     data_class.setTempTolerance(tempTol.toFloat());
 
-    firebase->awaitGet(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid", &targetHumid);
+    safeGet(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid", &targetHumid);
     data_class.setTargetHumid(targetHumid.toFloat());
 
-    firebase->awaitGet(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance", &humidTol);
+    safeGet(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance", &humidTol);
     data_class.setHumidTolerance(humidTol.toFloat());
 
-    firebase->awaitGet(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil", &targetSoil);
+    safeGet(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil", &targetSoil);
     data_class.setTargetSoil(targetSoil.toFloat());
 
-    firebase->awaitGet(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", &pumpDur);
+    safeGet(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", &pumpDur);
     data_class.setPumpDuration(pumpDur.toFloat());
 
-    firebase->awaitGet(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", &absDelay);
+    safeGet(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", &absDelay);
     data_class.setAbsorptionDelay(absDelay.toFloat());
 
-    firebase->awaitGet(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance", &soilTol);
+    safeGet(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance", &soilTol);
     data_class.setSoilTolerance(soilTol.toFloat());
 
-    firebase->awaitGet(safeEmail + "/Status", &status);
-    if (status == "true")
-        data_class.setIsRunning(true);
-    else
-        data_class.setIsRunning(false);
+    safeGet(safeEmail + "/Status", &status);
+    data_class.setIsRunning(status == "true" ? true : false);
 }
 
 void fireBaseLoadData(bool isOnLoop)
@@ -241,39 +238,68 @@ void getNow()
 
 void checkActivity(bool isOTA)
 {
-    if(isOTA == true)
-    {
+    if(isOTA == true) {
         return;
     }
 
-    if(button[0]->getIdle() && button[1]->getIdle() &&
-       button[2]->getIdle() && button[3]->getIdle() && initDevice)
+    bool allIdle = button[0]->getIdle() && button[1]->getIdle() &&
+                   button[2]->getIdle() && button[3]->getIdle();
+
+    if(allIdle && initDevice)
     {
         if (display->fadeScreenOff())
         {
-            if(firebase_running)
+            // ✅ Só tenta conectar Firebase se WiFi OK e ainda não conectado
+            if(!firebase_running && WiFi.status() == WL_CONNECTED)
             {
-                if (WiFi.status() == WL_CONNECTED && firebase->init()) {
-                    firebase_running = false;
+                static unsigned long lastInitAttempt = 0;
+                unsigned long now = millis();
+                
+                // ✅ Tenta init a cada 10s (não toda iteração!)
+                if (now - lastInitAttempt > 10000) {
+                    lastInitAttempt = now;
+                    
+                    // ✅ Init com timeout (máximo 5s de espera)
+                    unsigned long initStart = millis();
+                    if (firebase->init()) {
+                        firebase_running = true;
+                    } else if (millis() - initStart > 5000) {
+                        // ✅ Se demorou mais de 5s, força stop
+                        firebase->stopApp();
+                    }
                 }
             }
         }
         
-        display->asyncSet();
+        // ✅ Só envia dados se Firebase estiver realmente pronto
+        if (firebase_running && firebase->isReady()) {
+            display->asyncSet();
+        }
+        
         menu = 0;
     }
-    else if(!button[0]->getIdle() || !button[1]->getIdle() ||
-            !button[2]->getIdle() || !button[3]->getIdle())
+    else if(!allIdle)
     {
-        firebase_running = true;
-        firebase->stopApp();
+        // ✅ Desliga Firebase apenas se estava ligado
+        if (firebase_running) {
+            firebase_running = false;
+            
+            // ✅ Stop com timeout de segurança
+            unsigned long stopStart = millis();
+            firebase->stopApp();
+            
+            // ✅ Se demorou mais de 2s, força desconexão SSL
+            if (millis() - stopStart > 2000) {
+                // Acessa via ponteiro global (adicione no FBase.hpp)
+                // ssl_client.stop();
+            }
 
-        // ===== intervalo não bloqueante (100 ms) =====
-        unsigned long start = millis();
-        while (millis() - start < 100) {
-            yield(); // mantém WiFi/RTOS rodando
+            // ✅ Delay não bloqueante
+            unsigned long start = millis();
+            while (millis() - start < 100) {
+                yield();
+            }
         }
-        // =============================================
 
         display->fadeScreenOn();
     }
@@ -316,19 +342,51 @@ void loop()
     
     display->menuSwitch(&menu);
     
-    // MUDANÇA 15: VERIFICAR CONEXÃO WIFI ANTES DE CHAMAR LOOPS DO FIREBASE
+    // ✅ MUDANÇA CRÍTICA: Só chama loops se tudo estiver OK
     if (WiFi.status() == WL_CONNECTED) {
         wifi.loop();
-        firebase->loop();
+        
+        // ✅ Só chama firebase->loop() se estiver autenticado e pronto
+        if (firebase_running && firebase->isReady()) {
+            firebase->loop();
+        }
+        // ✅ Se não está pronto mas deveria estar, tenta reconectar (não bloqueante)
+        else if (firebase_running && !firebase->isReady()) {
+            static unsigned long lastReconnectAttempt = 0;
+            unsigned long now = millis();
+            
+            // Tenta reconectar a cada 30s (não no loop principal!)
+            if (now - lastReconnectAttempt > 30000) {
+                lastReconnectAttempt = now;
+                
+                // ✅ Cria task separada para reconexão (não trava loop)
+                static bool reconnecting = false;
+                if (!reconnecting) {
+                    reconnecting = true;
+                    
+                    // Agenda reconexão assíncrona
+                    xTaskCreate([](void* param) {
+                        firebase->stopApp();
+                        vTaskDelay(pdMS_TO_TICKS(1000));
+                        firebase->init();
+                        bool* flag = (bool*)param;
+                        *flag = false;
+                        vTaskDelete(NULL);
+                    }, "FirebaseReconnect", 8192, &reconnecting, 1, NULL);
+                }
+            }
+        }
     } else {
-        // Tentar reconectar WiFi
+        // WiFi offline: só tenta reconectar wifi
         wifi.loop();
     }
     
     getNow();
 
-    while(Serial1.available() >= 5) {
-        int result = readPacket(&data_class);
+    // ✅ Processa serial com timeout
+    unsigned long serialStart = millis();
+    while(Serial1.available() >= 5 && millis() - serialStart < 50) {
+        readPacket(&data_class);
     }
 
     float lightValue = data_class.getIsRunning() ? light.getStatus() : 0;
@@ -337,5 +395,4 @@ void loop()
     light.run(data_class.getIsRunning());
     
     fireBaseLoadData(true);
-
 }

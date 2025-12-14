@@ -48,6 +48,7 @@ class FBase {
         bool stopApp();
         bool isReady();
         void loop();
+        bool isHealthy();
 
         void awaitGet(String& path, String *result);
         void awaitSet(String &path, String value, int type);

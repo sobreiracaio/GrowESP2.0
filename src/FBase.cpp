@@ -104,13 +104,31 @@ bool FBase::stopApp()
 
 
 void FBase::loop() {
-
-    if (!authenticated) 
+    // ✅ Não faz nada se não autenticado
+    if (!authenticated || !app.ready()) 
         return;
 
+    // ✅ Verifica conexão SSL antes de operar
+    if (ssl_client.connected()) {
+        // ✅ Timeout razoável durante operações (5s)
+        ssl_client.setTimeout(5000);
+    } else {
+        // ✅ Se desconectou, marca como não autenticado
+        authenticated = false;
+        return;
+    }
+
+    // ✅ Chama loops apenas se tudo OK
     app.loop();
     Database.loop();
-    ssl_client.setTimeout(10);
+}
+
+// ✅ NOVA FUNÇÃO: Verifica saúde da conexão
+bool FBase::isHealthy() 
+{
+    return authenticated && 
+           app.ready() && 
+           (ssl_client.connected() || WiFi.status() == WL_CONNECTED);
 }
 
 bool FBase::isReady() {
