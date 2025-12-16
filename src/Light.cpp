@@ -32,22 +32,25 @@ void Light::run(bool isRunning)
     
     time_t day = mktime(&dayTime);
     time_t night = mktime(&nightTime);
+    time_t realTime = mktime(&now);
     
-    // Se night <= day, significa que não há intervalo válido ou atravessa meia-noite
+    // Se night <= day, o período atravessa meia-noite
     if(night <= day) {
         // Se são exatamente iguais, não há período válido
         if(night == day) {
             status = OFF;
             return;
         }
-        // Se night < day, o período atravessa meia-noite
-        nightTime.tm_mday++;
-        night = mktime(&nightTime);
+        
+        // Período atravessa meia-noite: duas condições possíveis
+        // 1) Estamos no mesmo dia E após o horário de ligar (realTime >= day)
+        // 2) Estamos antes do horário de desligar do dia atual (realTime < night)
+        status = (realTime >= day || realTime < night) ? ON : OFF;
     }
-    
-    time_t realTime = mktime(&now);
-    // Verifica se está no período de luz
-    status = (realTime >= day && realTime < night) ? ON : OFF;
+    else {
+        // Período normal no mesmo dia
+        status = (realTime >= day && realTime < night) ? ON : OFF;
+    }
 }
 
 void Light::setTimeFunction(void (*func)())
