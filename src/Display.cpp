@@ -882,7 +882,7 @@ void Display::flushScreen()
     display->fillScreen(BLACK);
 }
 
-void Display::bottomScreen(String t1, String t2, String t3, String t4)
+void Display:: bottomScreen(String t1, String t2, String t3, String t4)
 {
     display->setTextColor(WHITE, BLACK);
 
