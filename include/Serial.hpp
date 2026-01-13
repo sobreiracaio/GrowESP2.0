@@ -26,6 +26,7 @@
 #define HEATER 0x26
 #define HUMIDIFIER 0x27
 #define DEHUMIDIFIER 0x28
+#define RESERV 0x29
 
 
 #include "Libraries.hpp"

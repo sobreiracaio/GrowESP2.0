@@ -130,8 +130,8 @@ void Display::mainScreen(float *menu)
     drawArcGauge(60 ,98, dataClass->getTemp(), dataClass->getTargetTemp(), 50, dataClass->getTempTolerance(), "Temperatura" , ".C", 1);
 	drawArcGauge(160 ,98, dataClass->getHumid(), dataClass->getTargetHumid(), 100, dataClass->getHumidTolerance(), "Umidade" , "%", 2);
 	drawArcGauge(260 ,98, dataClass->getSoil(), dataClass->getTargetSoil(), 100, dataClass->getSoilTolerance(), "Solo" , "%");
-    drawBar(20, 170, 180, 15, dataClass->getWaterRes(), dataClass->getReservWarning(), 100, 2, "Reserv. Rega", "%");
-    drawBar(20, 218, 180, 15, dataClass->getHumidRes(), dataClass->getReservWarning(), 100, 2,  "Reserv. Umid.", "%");
+    drawBar(20, 170, 180, 15, dataClass->getWaterRes(), dataClass->getReservWarning(), 100, 2, "Reservatorio de Agua", "%");
+    //drawBar(20, 218, 180, 15, dataClass->getHumidRes(), dataClass->getReservWarning(), 100, 2,  "Reserv. Umid.", "%");
     
     
     

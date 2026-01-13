@@ -280,7 +280,12 @@ void DataClass::getNightTime(float *out)
 
 float DataClass::getWaterRes()
 {
-    return WaterReserv;
+    float res = map(WaterReserv, 500, 0, 0, 100);
+    if (res < 0)
+        res = 0;
+    if (res > 100)
+        res = 100;
+    return res;
 }
 
 float DataClass::getHumidRes()
