@@ -129,6 +129,11 @@ int readPacket(DataClass *data_class)
             Serial.printf("   -> DEHUMIDIFIER definido: %d\n", (bool)fvalue);
             break;
         
+        case RESERV:
+            data_class->setWaterRes(fvalue);
+            Serial.printf("   -> RESERV definido: %.2f\n", fvalue);
+            break;
+        
         default:
             Serial.printf("❌ ID desconhecido: 0x%02X\n", id);
             return -3;
