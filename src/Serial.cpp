@@ -28,47 +28,47 @@ void sendPacket(uint8_t id, float value)
 
     uint8_t checksum = (HEADER + id + high + low) & 0xFF;
 
-    //Serial.printf("📤 Enviando ID:0x%02X Val:%.2f Raw:0x%02X%02X Chk:0x%02X\n", 
-    //               id, value, high, low, checksum);
+    Serial.printf("📤 Enviando ID:0x%02X Val:%.2f Raw:0x%02X%02X Chk:0x%02X\n", 
+                   id, value, high, low, checksum);
 
-    Serial1.write(HEADER);
-    Serial1.write(id);
-    Serial1.write(high);
-    Serial1.write(low);
-    Serial1.write(checksum);
+    Serial2.write(HEADER);
+    Serial2.write(id);
+    Serial2.write(high);
+    Serial2.write(low);
+    Serial2.write(checksum);
 }
 
 
 int readPacket(DataClass *data_class)
 {
-    if (Serial1.available() < 5)
+    if (Serial2.available() < 5)
         return 0;
 
-    uint8_t header = Serial1.read();
+    uint8_t header = Serial2.read();
     
     // ✅ DEBUG: Veja o que está chegando
-    //Serial.print("📥 ESP32 - Header:0x");
-    //Serial.print(header, HEX);
-    //Serial.print(" (esperado:0x");
-    //Serial.print(HEADER, HEX);
-    //Serial.println(")");
+    // Serial.print("📥 Recebido do Pico - Header:0x");
+    // Serial.print(header, HEX);
+    // Serial.print(" (esperado:0x");
+    // Serial.print(HEADER, HEX);
+    // Serial.println(")");
     
     if (header != HEADER) {
         //Serial.printf("❌ Header inválido: 0x%02X\n", header);
         // ✅ Limpa buffer até achar próximo header
-        while(Serial1.available() && Serial1.peek() != HEADER) {
-            Serial1.read();
+        while(Serial2.available() && Serial2.peek() != HEADER) {
+            Serial2.read();
         }
         return -1;
     }
 
-    uint8_t id = (uint8_t)Serial1.read();
-    uint8_t high = (uint8_t)Serial1.read();
-    uint8_t low  = (uint8_t)Serial1.read();
-    uint8_t checksum = (uint8_t)Serial1.read();
+    uint8_t id = (uint8_t)Serial2.read();
+    uint8_t high = (uint8_t)Serial2.read();
+    uint8_t low  = (uint8_t)Serial2.read();
+    uint8_t checksum = (uint8_t)Serial2.read();
 
-    //Serial.printf("   ID:0x%02X High:0x%02X Low:0x%02X Chk:0x%02X\n", 
-    //               id, high, low, checksum);
+    // Serial.printf("Recebido ID:0x%02X High:0x%02X Low:0x%02X Chk:0x%02X\n", 
+    //                id, high, low, checksum);
 
     uint8_t calc = (HEADER + id + high + low) & 0xFF;
     
@@ -86,51 +86,51 @@ int readPacket(DataClass *data_class)
     {
         case TEMP:
             data_class->setTemp(fvalue);
-            //Serial.printf("   -> TEMP definido: %.2f\n", fvalue);
+            Serial.printf("   -> TEMP definido: %.2f\n", fvalue);
             break;
         
         case HUMID:
             data_class->setHumid(fvalue);
-            //Serial.printf("   -> HUMID definido: %.2f\n", fvalue);
+            Serial.printf("   -> HUMID definido: %.2f\n", fvalue);
             break;
         
         case SOIL:
             data_class->setSoil(fvalue);
-            //Serial.printf("   -> SOIL definido: %.2f\n", fvalue);
+            Serial.printf("   -> SOIL definido: %.2f\n", fvalue);
             break;
         
         case LIGHT:
             data_class->setLightStatus((bool)fvalue);
-            //Serial.printf("   -> LIGHT0 definido: %d\n", (bool)fvalue);
+            Serial.printf("   -> LIGHT0 definido: %d\n", (bool)fvalue);
             break;
         
         case PUMP:
             data_class->setPumpStatus((bool)fvalue);
-            //Serial.printf("   -> PUMP definido: %d\n", (bool)fvalue);
+            Serial.printf("   -> PUMP definido: %d\n", (bool)fvalue);
             break;
         
         case COOLER:
             data_class->setCoolerStatus((bool)fvalue);
-            //Serial.printf("   -> COOLER definido: %d\n", (bool)fvalue);
+            Serial.printf("   -> COOLER definido: %d\n", (bool)fvalue);
             break;
         
         case HEATER:
             data_class->setHeaterStatus((bool)fvalue);
-            //Serial.printf("   -> HEATER definido: %d\n", (bool)fvalue);
+            Serial.printf("   -> HEATER definido: %d\n", (bool)fvalue);
             break;
         
         case HUMIDIFIER:
             data_class->setHumidStatus((bool)fvalue);
-            //Serial.printf("   -> HUMIDIFIER definido: %d\n", (bool)fvalue);
+            Serial.printf("   -> HUMIDIFIER definido: %d\n", (bool)fvalue);
             break;
         
         case DEHUMIDIFIER:
             data_class->setDehumidStatus((bool)fvalue);
-            //Serial.printf("   -> DEHUMIDIFIER definido: %d\n", (bool)fvalue);
+            Serial.printf("   -> DEHUMIDIFIER definido: %d\n", (bool)fvalue);
             break;
         
         default:
-            //Serial.printf("❌ ID desconhecido: 0x%02X\n", id);
+            Serial.printf("❌ ID desconhecido: 0x%02X\n", id);
             return -3;
     }
 

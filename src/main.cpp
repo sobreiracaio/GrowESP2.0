@@ -309,8 +309,9 @@ void checkActivity(bool isOTA)
 
 void setup() 
 {
-	//Serial.begin(115200);
-	Serial1.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
+	Serial.begin(115200);
+      
+	Serial2.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
 	initClasses();
 	initModules();
     
@@ -385,7 +386,7 @@ void loop()
 
     // ✅ Processa serial com timeout
     unsigned long serialStart = millis();
-    while(Serial1.available() >= 5 && millis() - serialStart < 50) {
+    while(Serial2.available() >= 5 && millis() - serialStart < 50) {
         readPacket(&data_class);
     }
 

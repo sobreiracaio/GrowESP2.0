@@ -186,7 +186,7 @@ void Display::adjustScreen(float *menu)
         btn[1]->read(menu, INCREMENT, 10, 0);
         btn[2]->read(&submenu, INCREMENT, 12, 0);
         btn[3]->read(menu, DECREMENT, 10, 0);
-        bottomScreen("<", ">", "Ajustar", "Voltar");
+        bottomScreen("<", ">", "     Ajustar     ", "Voltar");
         break;
 
     case 1:
@@ -215,7 +215,7 @@ void Display::adjustScreen(float *menu)
             firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hour);
         }
         
-        bottomScreen("  -  ", "  +  ", "    OK    ", "Voltar");
+        bottomScreen("  -  ", "  +  ", "Confirmar", "Voltar");
         break;
     }
     
@@ -244,7 +244,7 @@ void Display::adjustScreen(float *menu)
             firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hour);
         }
         
-        bottomScreen("  -  ", "  +  ", "    OK    ", "Voltar");
+        bottomScreen("  -  ", "  +  ", "Confirmar", "Voltar");
         break;
     }
         
@@ -271,7 +271,7 @@ void Display::adjustScreen(float *menu)
             hour = (night[0] < 10 ? "0" + String((int)night[0]) : String((int)night[0]))  + ":" + (night[1] < 10 ? "0" + String((int)night[1]) : String((int)night[1]));
             firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hour);
         }
-        bottomScreen("  -  ", "  +  ", "    OK    ", "Voltar");
+        bottomScreen("  -  ", "  +  ", "Confirmar", "Voltar");
         break;
     }
     case 4:
@@ -297,7 +297,7 @@ void Display::adjustScreen(float *menu)
             hour = (night[0] < 10 ? "0" + String((int)night[0]) : String((int)night[0]))  + ":" + (night[1] < 10 ? "0" + String((int)night[1]) : String((int)night[1]));
             firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hour);
         }
-        bottomScreen("  -  ", "  +  ", "    OK    ", "Voltar");
+        bottomScreen("  -  ", "  +  ", "Confirmar", "Voltar");
         break;
     }
         
@@ -323,7 +323,7 @@ void Display::adjustScreen(float *menu)
             sendPacket(TT, value);
         }
        
-        bottomScreen("  -  ", "  +  ", "    OK    ", "Voltar");
+        bottomScreen("  -  ", "  +  ", "Confirmar", "Voltar");
         break;
     }
     
@@ -348,7 +348,7 @@ void Display::adjustScreen(float *menu)
             sendPacket(TTOL, value);
         }
         
-        bottomScreen("  -  ", "  +  ", "    OK    ", "Voltar");
+        bottomScreen("  -  ", "  +  ", "Confirmar", "Voltar");
         break;
     }
     
@@ -372,7 +372,7 @@ void Display::adjustScreen(float *menu)
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid", value);
             sendPacket(TH, value);
         }
-        bottomScreen("  -  ", "  +  ", "    OK    ", "Voltar");
+        bottomScreen("  -  ", "  +  ", "Confirmar", "Voltar");
         break;
     }
     case 8:
@@ -395,7 +395,7 @@ void Display::adjustScreen(float *menu)
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance", value);
             sendPacket(HTOL, value);
         }
-        bottomScreen("  -  ", "  +  ", "    OK    ", "Voltar");
+        bottomScreen("  -  ", "  +  ", "Confirmar", "Voltar");
         break;
     }
     case 9:
@@ -418,7 +418,7 @@ void Display::adjustScreen(float *menu)
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil", value);
             sendPacket(TS, value);
         }
-        bottomScreen("  -  ", "  +  ", "    OK    ", "Voltar");
+        bottomScreen("  -  ", "  +  ", "Confirmar", "Voltar");
         break;
     }
     case 10:
@@ -442,7 +442,7 @@ void Display::adjustScreen(float *menu)
             sendPacket(PD, value);
 
         }
-        bottomScreen("  -  ", "  +  ", "    OK    ", "Voltar");
+        bottomScreen("  -  ", "  +  ", "Confirmar", "Voltar");
         break;
     }
     case 11:
@@ -465,7 +465,7 @@ void Display::adjustScreen(float *menu)
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", value);
             sendPacket(AD, value);
         }
-        bottomScreen("  -  ", "  +  ", "    OK    ", "Voltar");
+        bottomScreen("  -  ", "  +  ", "Confirmar", "Voltar");
         break;
     }
     case 12:
@@ -488,7 +488,7 @@ void Display::adjustScreen(float *menu)
             firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance", value);
             sendPacket(STOL, value);
         }
-        bottomScreen("  -  ", "  +  ", "    OK    ", "Voltar");
+        bottomScreen("  -  ", "  +  ", "Confirmar", "Voltar");
         break;
     }
     default:
@@ -631,7 +631,7 @@ void Display::confScreen(float *menu)
             if (btn[2]->read(&dummy_value, -1, 1, 0))
                 wifi->handleReset();    
             btn[3]->read(&submenu, DECREMENT, 8, 0);
-            bottomScreen("    ", "    ", "       OK       ", "Voltar");
+            bottomScreen("    ", "    ", "   Confirmar   ", "Voltar");
             break;
         }
 
@@ -680,7 +680,7 @@ void Display::confScreen(float *menu)
             } 
             btn[3]->read(&submenu, DECREMENT, 8, 0);
 
-            bottomScreen("  <  ", "  >  ", "Atualizar", "Voltar");
+            bottomScreen("  <  ", "  >  ", "  Atualizar  ", "Voltar");
             break;
         }
 
@@ -700,7 +700,7 @@ void Display::confScreen(float *menu)
             btn[2]->read(&submenu, INCREMENT, 8, 0);
             btn[3]->read(&submenu, DECREMENT, 8, 0);
 
-            bottomScreen("     ", "     ", "       OK       ", "Voltar");
+            bottomScreen("     ", "     ", "   Confirmar   ", "Voltar");
             break;
         
         case 5:
@@ -765,7 +765,7 @@ void Display::confScreen(float *menu)
             {} // reinicia no modo atualizacao de modulo
             btn[3]->read(&submenu, DECREMENT, 8, 0);
 
-            bottomScreen("  -  ", "  +  ", "Atualizar", "Voltar");
+            bottomScreen("  -  ", "  +  ", "  Atualizar  ", "Voltar");
             break;
         }
         case 8:
