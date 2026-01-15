@@ -86,56 +86,56 @@ int readPacket(DataClass *data_class)
     {
         case TEMP:
             data_class->setTemp(fvalue);
-            Serial.printf("   -> TEMP definido: %.2f\n", fvalue);
+            //Serial.printf("   -> TEMP definido: %.2f\n", fvalue);
             break;
         
         case HUMID:
             data_class->setHumid(fvalue);
-            Serial.printf("   -> HUMID definido: %.2f\n", fvalue);
+            //Serial.printf("   -> HUMID definido: %.2f\n", fvalue);
             break;
         
         case SOIL:
             data_class->setSoil(fvalue);
-            Serial.printf("   -> SOIL definido: %.2f\n", fvalue);
+            //Serial.printf("   -> SOIL definido: %.2f\n", fvalue);
             break;
         
         case LIGHT:
             data_class->setLightStatus((bool)fvalue);
-            Serial.printf("   -> LIGHT0 definido: %d\n", (bool)fvalue);
+            //Serial.printf("   -> LIGHT0 definido: %d\n", (bool)fvalue);
             break;
         
         case PUMP:
             data_class->setPumpStatus((bool)fvalue);
-            Serial.printf("   -> PUMP definido: %d\n", (bool)fvalue);
+            //Serial.printf("   -> PUMP definido: %d\n", (bool)fvalue);
             break;
         
         case COOLER:
             data_class->setCoolerStatus((bool)fvalue);
-            Serial.printf("   -> COOLER definido: %d\n", (bool)fvalue);
+            //Serial.printf("   -> COOLER definido: %d\n", (bool)fvalue);
             break;
         
         case HEATER:
             data_class->setHeaterStatus((bool)fvalue);
-            Serial.printf("   -> HEATER definido: %d\n", (bool)fvalue);
+            //Serial.printf("   -> HEATER definido: %d\n", (bool)fvalue);
             break;
         
         case HUMIDIFIER:
             data_class->setHumidStatus((bool)fvalue);
-            Serial.printf("   -> HUMIDIFIER definido: %d\n", (bool)fvalue);
+            //Serial.printf("   -> HUMIDIFIER definido: %d\n", (bool)fvalue);
             break;
         
         case DEHUMIDIFIER:
             data_class->setDehumidStatus((bool)fvalue);
-            Serial.printf("   -> DEHUMIDIFIER definido: %d\n", (bool)fvalue);
+            //Serial.printf("   -> DEHUMIDIFIER definido: %d\n", (bool)fvalue);
             break;
         
         case RESERV:
             data_class->setWaterRes(fvalue);
-            Serial.printf("   -> RESERV definido: %.2f\n", fvalue);
+            //Serial.printf("   -> RESERV definido: %.2f\n", fvalue);
             break;
         
         default:
-            Serial.printf("❌ ID desconhecido: 0x%02X\n", id);
+           // Serial.printf("❌ ID desconhecido: 0x%02X\n", id);
             return -3;
     }
 

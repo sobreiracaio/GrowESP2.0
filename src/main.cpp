@@ -309,7 +309,7 @@ void checkActivity(bool isOTA)
 
 void setup() 
 {
-	Serial.begin(115200);
+	//Serial.begin(115200);
       
 	Serial2.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
 	initClasses();
@@ -340,6 +340,7 @@ void setup()
 void loop() 
 {
     checkActivity(isOTA);
+    Serial.println(ESP.getFreeHeap());
     
     display->menuSwitch(&menu);
     
