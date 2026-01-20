@@ -960,25 +960,73 @@ void Display::OTAhasUpdate()
 
 void Display::wifiConnStatus()
 {
+    static unsigned long lastUpdate = 0;
+    static int lastSignal = 0;
+    static int smoothedRSSI = -70;
+    
+    unsigned long now = millis();
+    
+    if (now - lastUpdate < 2000) {
+        // Redesenha com último valor
+        int statusConnColor = wifi->getStatus() ? WHITE : RED;
+        
+        const int initX = 20;
+        const int initY = 5;
+        const int barW = 5;
+        const int space = 1;
+        const int maxH = 14;
+        
+        display->fillRect(initX, initY, (barW + space) * 5, maxH, BLACK);
+        
+        for (int i = 0; i < 5; i++)
+        {
+            int h = (i + 1) * 3;
+            int color = (i < lastSignal) ? statusConnColor : DARK_GREY;
+            
+            display->fillRect(
+                initX + i * (barW + space),
+                initY + (maxH - h),
+                barW,
+                h,
+                color
+            );
+        }
+        return;
+    }
+    
+    lastUpdate = now;
+    
     int statusConnColor = wifi->getStatus() ? WHITE : RED;
-    int wifiSignal = !(wifi->getSignalStrenght());
-    static int signal = 0;
-    if(wifiSignal >= -55) signal = 5;
-    else if(wifiSignal >= -65) signal = 4;
-    else if(wifiSignal >= -75) signal = 3;
-    else if(wifiSignal >= -85) signal = 2;
-    else if(wifiSignal >= -95) signal = 1;
-    int initX = 20;
-    int initY = 5;
-    int barW = 5;
-    int space = 1;
-    int maxH = 14;
-
+    int currentRSSI = wifi->getSignalStrenght();
+    
+    // Suavização
+    smoothedRSSI = (currentRSSI * 0.7) + (smoothedRSSI * 0.3);
+    
+    int signal = 0;
+    if (!wifi->getStatus()) {
+        signal = 0;
+    }
+    else if (smoothedRSSI >= -55) signal = 5;
+    else if (smoothedRSSI >= -65) signal = 4;
+    else if (smoothedRSSI >= -75) signal = 3;
+    else if (smoothedRSSI >= -85) signal = 2;
+    else if (smoothedRSSI >= -95) signal = 1;
+    
+    lastSignal = signal;
+    
+    const int initX = 20;
+    const int initY = 5;
+    const int barW = 5;
+    const int space = 1;
+    const int maxH = 14;
+    
+    display->fillRect(initX, initY, (barW + space) * 5, maxH, BLACK);
+    
     for (int i = 0; i < 5; i++)
     {
         int h = (i + 1) * 3;
-        int color = (i < signal) ? statusConnColor : BLACK;
-
+        int color = (i < signal) ? statusConnColor : DARK_GREY;
+        
         display->fillRect(
             initX + i * (barW + space),
             initY + (maxH - h),
