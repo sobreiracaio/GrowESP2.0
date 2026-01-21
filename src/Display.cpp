@@ -119,6 +119,7 @@ void Display::asyncSet()
 
 void Display::mainScreen(float *menu)
 {
+    firebase->stopApp();
     float dummy_value =0;
     static float is_running = dataClass->getIsRunning();
     if (*menu != 1)
@@ -141,7 +142,10 @@ void Display::mainScreen(float *menu)
     if (btn[0]->read(&dummy_value, -1, 1, 0));
 
     if (btn[1]->read(menu, INCREMENT, 10, 0))
+    {   
+        firebase->init();
         flushScreen();
+    }
     
     
     if(dataClass->getIsRunning() == false)
@@ -588,6 +592,7 @@ void Display::adjustScreen(float *menu)
 }
 void Display::confScreen(float *menu)
 {
+    firebase->stopApp();
     static float submenu = 0;
     float dummy_value = 0;
     static float lastSubmenu = -1;
@@ -613,7 +618,8 @@ void Display::confScreen(float *menu)
             drawMainTabs(0);
             drawWifiMenu(false);
 
-            btn[0]->read(menu, DECREMENT, 10, 0);
+            if(btn[0]->read(menu, DECREMENT, 10, 0))
+                firebase->init();
             btn[1]->read(&submenu, INCREMENT, 8, 0, 0, 2);
             btn[2]->read(&submenu, INCREMENT, 8, 0);
             btn[3]->read(menu, DECREMENT, 10, 0);
@@ -966,7 +972,8 @@ void Display::wifiConnStatus()
     
     unsigned long now = millis();
     
-    if (now - lastUpdate < 2000) {
+    if (now - lastUpdate < 10000) 
+    {
         // Redesenha com último valor
         int statusConnColor = wifi->getStatus() ? WHITE : RED;
         

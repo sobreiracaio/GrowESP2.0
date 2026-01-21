@@ -1,6 +1,4 @@
 #include "Libraries.hpp"
-
-
 #include "WifiManager.hpp"
 #include "Time.hpp"
 #include "FBase.hpp"
@@ -12,14 +10,10 @@
 #include "Serial.hpp"
 
 //Libraries
-
 Preferences prefs;
 UpdateClass update;
 
-
 TFT_eSPI *tft = NULL;
-
-
 
 //Classes
 Light light;
@@ -31,42 +25,65 @@ Button* button[4] = {NULL};
 DataClass data_class(&light);
 OTA ota(&prefs, firebase, display);
 
-
 struct tm now = {0};
 String safeEmail = "";
-
 
 float menu = 1;
 bool initDevice = false;
 bool isOTA = false;
 
-static bool firebase_running = true;
+// Estados do Firebase
+enum FirebaseState {
+    FB_STOPPED,           // Completamente desligado
+    FB_STARTING,          // Iniciando
+    FB_READY_FULL,        // Ativo para leitura/escrita (tela apagada)
+    FB_READY_LIGHT        // Ativo apenas para escrita (adjustScreen)
+};
 
+static FirebaseState firebase_state = FB_STOPPED;
 static unsigned long lastFirebaseReconnect = 0;
+static hw_timer_t *watchdog = NULL;
 
-void initClasses()
-{
+// ============ WATCHDOG ============
+void IRAM_ATTR resetModule() {
+    ets_printf("WATCHDOG: Sistema travado! Reiniciando...\n");
+    esp_restart();
+}
+
+void initWatchdog() {
+    watchdog = timerBegin(0, 80, true); // Timer 0, prescaler 80 (1MHz)
+    timerAttachInterrupt(watchdog, &resetModule, true);
+    timerAlarmWrite(watchdog, 120000000, false); // 120 segundos em microsegundos
+    timerAlarmEnable(watchdog);
+}
+
+void feedWatchdog() {
+    timerWrite(watchdog, 0); // Reseta o contador
+}
+
+// ============ FUNÇÕES AUXILIARES ============
+void initClasses() {
     tft = new TFT_eSPI();
-	button[0] = new Button(BTN1);
-	button[1] = new Button(BTN2);
-	button[2] = new Button(BTN3);
-	button[3] = new Button(BTN4);
-	display = new Display(tft, firebase, &rtc, &ota, &wifi, button, &data_class); 
-	wifi.injectDisplay(display);
+    button[0] = new Button(BTN1);
+    button[1] = new Button(BTN2);
+    button[2] = new Button(BTN3);
+    button[3] = new Button(BTN4);
+    display = new Display(tft, firebase, &rtc, &ota, &wifi, button, &data_class); 
+    wifi.injectDisplay(display);
 }
 
 void fireBaseLoadData(bool isOnLoop);
 
-void initModules()
-{
-	display->initDisplay();
-	display->initLogoScreen();
-	wifi.wifiInit();
+void initModules() {
+    display->initDisplay();
+    display->initLogoScreen();
+    wifi.wifiInit();
     display->connectionScreen("Atualizando relogio", "     Aguarde...     ");
-	rtc.begin();
-	display->flushScreen();
-	for (int i = 0; i < 4; i++)
-		button[i]->init();
+    rtc.begin();
+    display->flushScreen();
+    
+    for (int i = 0; i < 4; i++)
+        button[i]->init();
     
     safeEmail = wifi.getEmail();
     safeEmail.replace(".","_");
@@ -74,52 +91,52 @@ void initModules()
     display->injectFBase(firebase);
     ota.injectFbase(firebase);
     ota.injectDisplay(display);
+    
     display->connectionScreen("Atualizando banco de dados", "     Aguarde...     ");
-    while (!firebase->init())
-    {
+    
+    unsigned long initStart = millis();
+    while (!firebase->init()) {
+        feedWatchdog(); // Alimenta watchdog durante init
         display->connectionScreen("Atualizando banco de dados", "     Aguarde...     ");
         
+        if (millis() - initStart > 30000) { // Timeout de 30s
+            display->connectionScreen("Erro na inicializacao", "Reiniciando...");
+            delay(2000);
+            ESP.restart();
+        }
     }
+    
     firebase->awaitSet(safeEmail + "/Pass", wifi.getPass(), STRING);
+    feedWatchdog();
     fireBaseLoadData(false);
-	firebase->stopApp();
-
+    firebase->stopApp();
+    firebase_state = FB_STOPPED;
 }
 
-void formatDate(String *date, int period)
-{
-     int colonIndex = date->indexOf(':');
-    if (colonIndex == -1) return; // formato inválido
+void formatDate(String *date, int period) {
+    int colonIndex = date->indexOf(':');
+    if (colonIndex == -1) return;
    
     float hour = date->substring(0, colonIndex).toFloat();
     float minute = date->substring(colonIndex + 1).toFloat();
 
-  
-
-    if(period == DAY)
-    {
+    if(period == DAY) {
         data_class.setDayTime(hour, minute);
-        
     }
-    if(period == NIGHT)
-    {
+    if(period == NIGHT) {
         data_class.setNightTime(hour, minute);
-        
     }
-
 }
 
-void getValues()
-{
-    // ✅ Helper para esperar entre requisições
+void getValues() {
     auto safeGet = [](String path, String* result, int delayMs = 200) {
         firebase->awaitGet(path, result);
         
-        // ✅ Delay não bloqueante
         unsigned long start = millis();
         while (millis() - start < delayMs) {
             yield();
-            wifi.loop(); // Mantém WiFi vivo
+            feedWatchdog(); // Alimenta durante delays
+            wifi.loop();
         }
     };
 
@@ -138,7 +155,6 @@ void getValues()
     String token = "";
     String hasOTA = "";
 
-    // ✅ Requisições com delays entre elas
     safeGet("/_Binary", &binaryUrl);
     ota.setBinaryPath(binaryUrl);
    
@@ -182,36 +198,26 @@ void getValues()
     data_class.setIsRunning(status == "true" ? true : false);
 }
 
-void fireBaseLoadData(bool isOnLoop)
-{
-    if(isOnLoop)
-    {
+void fireBaseLoadData(bool isOnLoop) {
+    if(isOnLoop) {
         const unsigned long INTERVAL_MS = 30000;
         static unsigned long lastSend = 0;
         unsigned long now = millis();
 
-        if (now - lastSend < INTERVAL_MS) 
-        {
+        if (now - lastSend < INTERVAL_MS) {
             return;
         }
 
-        // MUDANÇA 12: VERIFICAR SE O FIREBASE ESTÁ REALMENTE PRONTO ANTES DE USAR
-        if (!firebase->isReady()) {
-            // Tentar reconectar se passou tempo suficiente desde última tentativa
-            if (now - lastFirebaseReconnect > 60000) { // 1 minuto
-                firebase->stopApp();
-                delay(1000);
-                firebase->init();
-                lastFirebaseReconnect = now;
-            }
+        if (firebase_state != FB_READY_FULL) {
             lastSend = millis();
             return;
         }
 
         String needChange = "";
         firebase->awaitGet(safeEmail + "/needChange", &needChange);
-        if(needChange == "true")
-        {
+        feedWatchdog();
+        
+        if(needChange == "true") {
             bool state = false;
             getValues();
             firebase->aSyncSetBool(safeEmail + "/needChange", state);
@@ -223,172 +229,214 @@ void fireBaseLoadData(bool isOnLoop)
     getValues();
 }
 
-
-void getNow()
-{
-  now.tm_hour = rtc.getHour();
-  now.tm_min = rtc.getMinute();
-  now.tm_sec = rtc.getSecond();
-  now.tm_mday = rtc.getDay();
-  now.tm_mon = rtc.getMonth();
-  now.tm_year = rtc.getYear();
-  rtc.checkSync();
+void getNow() {
+    now.tm_hour = rtc.getHour();
+    now.tm_min = rtc.getMinute();
+    now.tm_sec = rtc.getSecond();
+    now.tm_mday = rtc.getDay();
+    now.tm_mon = rtc.getMonth();
+    now.tm_year = rtc.getYear();
+    rtc.checkSync();
 }
 
-
-void checkActivity(bool isOTA)
-{
-    if(isOTA == true) {
-        return;
+// ============ GERENCIAMENTO DE ESTADO DO FIREBASE ============
+void stopFirebase() {
+    if (firebase_state == FB_STOPPED) return;
+    
+    unsigned long stopStart = millis();
+    firebase->stopApp();
+    
+    // Timeout de segurança
+    while (millis() - stopStart < 2000) {
+        yield();
+        feedWatchdog();
     }
+    
+    firebase_state = FB_STOPPED;
+}
+
+bool startFirebase() {
+    if (WiFi.status() != WL_CONNECTED) {
+        return false;
+    }
+    
+    unsigned long initStart = millis();
+    bool success = firebase->init();
+    
+    // Se demorou mais de 5s, aborta
+    if (millis() - initStart > 5000) {
+        firebase->stopApp();
+        return false;
+    }
+    
+    return success;
+}
+
+void checkActivity(bool isOTA) {
+    if(isOTA) return;
 
     bool allIdle = button[0]->getIdle() && button[1]->getIdle() &&
                    button[2]->getIdle() && button[3]->getIdle();
 
-    if(allIdle && initDevice)
-    {
-        if (display->fadeScreenOff())
-        {
-            // ✅ Só tenta conectar Firebase se WiFi OK e ainda não conectado
-            if(!firebase_running && WiFi.status() == WL_CONNECTED)
-            {
-                static unsigned long lastInitAttempt = 0;
-                unsigned long now = millis();
-                
-                // ✅ Tenta init a cada 10s (não toda iteração!)
-                if (now - lastInitAttempt > 10000) {
-                    lastInitAttempt = now;
-                    
-                    // ✅ Init com timeout (máximo 5s de espera)
-                    unsigned long initStart = millis();
-                    if (firebase->init()) {
-                        firebase_running = true;
-                    } else if (millis() - initStart > 5000) {
-                        // ✅ Se demorou mais de 5s, força stop
-                        firebase->stopApp();
-                    }
-                }
-            }
+    static bool screenFadingOut = false;
+    
+    // ========== BOTÕES OCIOSOS (tela apagando) ==========
+    if(allIdle && initDevice) {
+        if (!screenFadingOut) {
+            screenFadingOut = true;
         }
         
-        // ✅ Só envia dados se Firebase estiver realmente pronto
-        if (firebase_running && firebase->isReady()) {
-            display->asyncSet();
+        if (display->fadeScreenOff()) {
+            // Tela completamente apagada
+            
+            // Menu 2 (adjustScreen): Firebase modo LIGHT (apenas escrita)
+            if (menu == 2) {
+                if (firebase_state == FB_STOPPED) {
+                    if (startFirebase()) {
+                        firebase_state = FB_READY_LIGHT;
+                    }
+                } else if (firebase_state == FB_READY_FULL) {
+                    // Downgrade para modo LIGHT
+                    firebase_state = FB_READY_LIGHT;
+                }
+            }
+            // Outros menus: Firebase modo FULL (leitura + escrita)
+            else {
+                if (firebase_state == FB_STOPPED) {
+                    static unsigned long lastInitAttempt = 0;
+                    unsigned long now = millis();
+                    
+                    // Tenta iniciar a cada 10s
+                    if (now - lastInitAttempt > 10000) {
+                        lastInitAttempt = now;
+                        
+                        if (startFirebase()) {
+                            firebase_state = FB_READY_FULL;
+                        }
+                    }
+                } else if (firebase_state == FB_READY_LIGHT) {
+                    // Upgrade para modo FULL
+                    firebase_state = FB_READY_FULL;
+                }
+            }
+            
+            // Envia dados apenas se Firebase estiver ativo
+            if (firebase_state == FB_READY_FULL && firebase->isReady()) {
+                display->asyncSet();
+            }
         }
         
         menu = 0;
     }
-    else if(!allIdle)
-    {
-        // ✅ Desliga Firebase apenas se estava ligado
-        if (firebase_running) {
-            firebase_running = false;
-            
-            // ✅ Stop com timeout de segurança
-            unsigned long stopStart = millis();
-            firebase->stopApp();
-            
-            // ✅ Se demorou mais de 2s, força desconexão SSL
-            if (millis() - stopStart > 2000) {
-                // Acessa via ponteiro global (adicione no FBase.hpp)
-                // ssl_client.stop();
-            }
-
-            // ✅ Delay não bloqueante
-            unsigned long start = millis();
-            while (millis() - start < 100) {
-                yield();
-            }
+    // ========== BOTÕES ATIVOS (tela acendendo) ==========
+    else if(!allIdle) {
+        screenFadingOut = false;
+        
+        // Desliga Firebase IMEDIATAMENTE quando botões são pressionados
+        // EXCETO no menu 2 (adjustScreen) onde mantemos modo LIGHT
+        if (menu != 2 && firebase_state != FB_STOPPED) {
+            stopFirebase();
         }
-
+        // No menu 2, mantém LIGHT se já estava ativo
+        else if (menu == 2 && firebase_state == FB_READY_FULL) {
+            firebase_state = FB_READY_LIGHT;
+        }
+        
         display->fadeScreenOn();
     }
 }
 
-
-
-void setup() 
-{
-	//Serial.begin(115200);
-      
-	Serial2.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
-	initClasses();
-	initModules();
+void setup() {
+    //Serial.begin(115200);
     
-	light.setTimeFunction(getNow);
+    // ============ INICIA WATCHDOG ============
+    initWatchdog();
+    
+    Serial2.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
+    initClasses();
+    
+    feedWatchdog(); // Alimenta antes de operações longas
+    initModules();
+    
+    light.setTimeFunction(getNow);
 
     initDevice = true;
     
     float lightValue = data_class.getIsRunning() ? light.getStatus() : 0;
     uint8_t arrID[10] = {TT, TTOL, TH, HTOL, TS, STOL, PD, AD, LIGHT0, STATUS0};
-    float arrVal[10] = {data_class.getTargetTemp(), data_class.getTempTolerance(), data_class.getTargetHumid(), data_class.getHumidTolerance(),
-        data_class.getTargetSoil(), data_class.getSoilTolerance(), data_class.getPumpDuration(), data_class.getAbsorptionDelay(),
-        lightValue, (float)data_class.getIsRunning()};
-        
-        const int count = sizeof(arrID) / sizeof(arrID[0]);
-        
-        for (int i = 0; i < count; i++)
-        {    
-            sendPacket(arrID[i], arrVal[i]);
-            delay(500);
-        }
-        
-        display->flushScreen();
+    float arrVal[10] = {
+        data_class.getTargetTemp(), 
+        data_class.getTempTolerance(), 
+        data_class.getTargetHumid(), 
+        data_class.getHumidTolerance(),
+        data_class.getTargetSoil(), 
+        data_class.getSoilTolerance(), 
+        data_class.getPumpDuration(), 
+        data_class.getAbsorptionDelay(),
+        lightValue, 
+        (float)data_class.getIsRunning()
+    };
+    
+    const int count = sizeof(arrID) / sizeof(arrID[0]);
+    
+    for (int i = 0; i < count; i++) {    
+        sendPacket(arrID[i], arrVal[i]);
+        delay(500);
+        feedWatchdog(); // Alimenta durante envios
+    }
+    
+    display->flushScreen();
 }
 
-
-void loop() 
-{
+void loop() {
+    feedWatchdog(); // ============ ALIMENTA WATCHDOG NO INÍCIO ============
+    
     checkActivity(isOTA);
     Serial.println(ESP.getFreeHeap());
     
     display->menuSwitch(&menu);
     
-    // ✅ MUDANÇA CRÍTICA: Só chama loops se tudo estiver OK
+    // ========== GERENCIAMENTO WIFI + FIREBASE ==========
     if (WiFi.status() == WL_CONNECTED) {
         wifi.loop();
         
-        // ✅ Só chama firebase->loop() se estiver autenticado e pronto
-        if (firebase_running && firebase->isReady()) {
+        // Firebase loop APENAS se estiver ativo
+        if ((firebase_state == FB_READY_FULL || firebase_state == FB_READY_LIGHT) && firebase->isReady()) {
             firebase->loop();
         }
-        // ✅ Se não está pronto mas deveria estar, tenta reconectar (não bloqueante)
-        else if (firebase_running && !firebase->isReady()) {
+        // Reconexão automática se perdeu conexão
+        else if ((firebase_state == FB_READY_FULL || firebase_state == FB_READY_LIGHT) && !firebase->isReady()) {
             static unsigned long lastReconnectAttempt = 0;
             unsigned long now = millis();
             
-            // Tenta reconectar a cada 30s (não no loop principal!)
             if (now - lastReconnectAttempt > 30000) {
                 lastReconnectAttempt = now;
                 
-                // ✅ Cria task separada para reconexão (não trava loop)
-                static bool reconnecting = false;
-                if (!reconnecting) {
-                    reconnecting = true;
-                    
-                    // Agenda reconexão assíncrona
-                    xTaskCreate([](void* param) {
-                        firebase->stopApp();
-                        vTaskDelay(pdMS_TO_TICKS(1000));
-                        firebase->init();
-                        bool* flag = (bool*)param;
-                        *flag = false;
-                        vTaskDelete(NULL);
-                    }, "FirebaseReconnect", 8192, &reconnecting, 1, NULL);
+                stopFirebase();
+                delay(1000);
+                feedWatchdog();
+                
+                if (startFirebase()) {
+                    firebase_state = (menu == 2) ? FB_READY_LIGHT : FB_READY_FULL;
                 }
             }
         }
     } else {
-        // WiFi offline: só tenta reconectar wifi
         wifi.loop();
+        
+        // Se WiFi caiu, desliga Firebase
+        if (firebase_state != FB_STOPPED) {
+            stopFirebase();
+        }
     }
     
     getNow();
 
-    // ✅ Processa serial com timeout
+    // ========== PROCESSA SERIAL COM TIMEOUT ==========
     unsigned long serialStart = millis();
     while(Serial2.available() >= 5 && millis() - serialStart < 50) {
         readPacket(&data_class);
+        feedWatchdog(); // Alimenta durante processamento serial
     }
 
     float lightValue = data_class.getIsRunning() ? light.getStatus() : 0;
@@ -397,4 +445,6 @@ void loop()
     light.run(data_class.getIsRunning());
     
     fireBaseLoadData(true);
+    
+    feedWatchdog(); // ============ ALIMENTA WATCHDOG NO FINAL ============
 }
