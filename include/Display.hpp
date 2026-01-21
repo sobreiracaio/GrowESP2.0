@@ -96,5 +96,7 @@ class Display {
         bool fadeScreenOn();
 
         void asyncSet();
+
+        TFT_eSPI* getDisplay() { return display; }
        
 };
