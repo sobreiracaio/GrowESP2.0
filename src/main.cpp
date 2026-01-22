@@ -41,16 +41,19 @@ enum FirebaseState {
     FB_READY_LIGHT        
 };
 
-static FirebaseState firebase_state = FB_STOPPED;
-static FirebaseState firebase_target_state = FB_STOPPED;
-static unsigned long firebaseTransitionStart = 0;
+volatile FirebaseState firebase_state = FB_STOPPED;
+volatile FirebaseState firebase_target_state = FB_STOPPED;
+volatile bool firebase_is_ready = false;
 static hw_timer_t *watchdog = NULL;
 
-// ============ CONTROLE DE TASKS ============
+// ============ CONTROLE DUAL-CORE ============
 TaskHandle_t firebaseTaskHandle = NULL;
+TaskHandle_t uiTaskHandle = NULL;
 SemaphoreHandle_t firebaseMutex = NULL;
-volatile bool firebaseTaskRunning = false;
+SemaphoreHandle_t displayMutex = NULL;
+
 volatile bool showLoadingBox = false;
+volatile bool needsLoadingRedraw = false;
 
 // ============ WATCHDOG ============
 void IRAM_ATTR resetModule() {
@@ -69,113 +72,124 @@ void feedWatchdog() {
     timerWrite(watchdog, 0);
 }
 
-// ============ LOADING BOX ============
-void drawLoadingBox(String message = "Aguarde...") {
-    int boxW = 300;
-    int boxH = 100;
-    int boxX = (480 - boxW) / 2;
-    int boxY = (320 - boxH) / 2;
-    
-    display->getDisplay()->fillRoundRect(boxX, boxY, boxW, boxH, 10, TFT_DARKGREY);
-    display->getDisplay()->drawRoundRect(boxX, boxY, boxW, boxH, 10, TFT_WHITE);
-    
-    display->getDisplay()->setTextDatum(MC_DATUM);
-    display->getDisplay()->setTextColor(TFT_WHITE, TFT_DARKGREY);
-    display->getDisplay()->drawString(message, 240, 160, 4);
+// ============ LOADING BOX (CORE 1 APENAS) ============
+void drawLoadingBox(String message = "Conectando...") {
+    if (xSemaphoreTake(displayMutex, portMAX_DELAY)) {
+        int boxW = 300;
+        int boxH = 100;
+        int boxX = (480 - boxW) / 2;
+        int boxY = (320 - boxH) / 2;
+        
+        display->getDisplay()->fillRoundRect(boxX, boxY, boxW, boxH, 10, TFT_DARKGREY);
+        display->getDisplay()->drawRoundRect(boxX, boxY, boxW, boxH, 10, TFT_WHITE);
+        
+        display->getDisplay()->setTextDatum(MC_DATUM);
+        display->getDisplay()->setTextColor(TFT_WHITE, TFT_DARKGREY);
+        display->getDisplay()->drawString(message, 240, 160, 4);
+        
+        xSemaphoreGive(displayMutex);
+    }
 }
 
 void clearLoadingBox() {
-    int boxW = 300;
-    int boxH = 100;
-    int boxX = (480 - boxW) / 2;
-    int boxY = (320 - boxH) / 2;
-    
-    display->getDisplay()->fillRect(boxX, boxY, boxW, boxH, TFT_BLACK);
+    if (xSemaphoreTake(displayMutex, portMAX_DELAY)) {
+        int boxW = 300;
+        int boxH = 100;
+        int boxX = (480 - boxW) / 2;
+        int boxY = (320 - boxH) / 2;
+        
+        display->getDisplay()->fillRect(boxX, boxY, boxW, boxH, TFT_BLACK);
+        
+        xSemaphoreGive(displayMutex);
+    }
 }
 
-// ============ TASK FIREBASE ============
-void firebaseTask(void *parameter) {
-    FirebaseState action = *(FirebaseState*)parameter;
+// ============ TASK FIREBASE (CORE 0 - DEDICADO) ============
+void firebaseCoreTask(void *parameter) {
+    Serial.println("[CORE0] Firebase task iniciada");
     
-    if (action == FB_STARTING) {
-        // Inicializa Firebase
-        unsigned long startTime = millis();
-        bool success = false;
+    while(true) {
+        feedWatchdog();
         
-        while (millis() - startTime < 8000 && !success) { // 8s timeout
+        // ========== GERENCIA ESTADOS DO FIREBASE ==========
+        if (firebase_state == FB_STARTING && WiFi.status() == WL_CONNECTED) {
+            Serial.println("[CORE0] Iniciando Firebase...");
+            
             if (xSemaphoreTake(firebaseMutex, portMAX_DELAY)) {
-                success = firebase->init();
+                bool success = firebase->init();
+                
+                if (success && firebase->isReady()) {
+                    firebase_state = firebase_target_state;
+                    firebase_is_ready = true;
+                    showLoadingBox = false;
+                    Serial.println("[CORE0] Firebase pronto!");
+                } else {
+                    firebase->stopApp();
+                    firebase_state = FB_STOPPED;
+                    firebase_is_ready = false;
+                    showLoadingBox = false;
+                    Serial.println("[CORE0] Firebase falhou ao iniciar");
+                }
+                
+                xSemaphoreGive(firebaseMutex);
+            }
+        }
+        else if (firebase_state == FB_STOPPING) {
+            Serial.println("[CORE0] Parando Firebase...");
+            
+            if (xSemaphoreTake(firebaseMutex, portMAX_DELAY)) {
+                firebase->stopApp();
+                firebase_state = FB_STOPPED;
+                firebase_is_ready = false;
+                showLoadingBox = false;
                 xSemaphoreGive(firebaseMutex);
             }
             
-            if (success) {
-                firebase_state = firebase_target_state;
-                break;
-            }
+            Serial.println("[CORE0] Firebase parado");
+        }
+        
+        // ========== FIREBASE LOOP (quando ativo) ==========
+        if ((firebase_state == FB_READY_FULL || firebase_state == FB_READY_LIGHT) && 
+            firebase_is_ready && WiFi.status() == WL_CONNECTED) {
             
-            vTaskDelay(100 / portTICK_PERIOD_MS);
+            if (xSemaphoreTake(firebaseMutex, 10 / portTICK_PERIOD_MS)) {
+                firebase->loop();
+                
+                // Envia dados se necessário
+                static unsigned long lastAsyncSend = 0;
+                if (firebase_state == FB_READY_FULL && millis() - lastAsyncSend > 60000) {
+                    display->asyncSet();
+                    lastAsyncSend = millis();
+                }
+                
+                xSemaphoreGive(firebaseMutex);
+            }
         }
         
-        if (!success) {
-            firebase_state = FB_STOPPED;
-        }
-    }
-    else if (action == FB_STOPPING) {
-        // Para Firebase
-        if (xSemaphoreTake(firebaseMutex, portMAX_DELAY)) {
-            firebase->stopApp();
-            xSemaphoreGive(firebaseMutex);
-        }
+        // ========== WIFI LOOP ==========
+        wifi.loop();
         
-        vTaskDelay(500 / portTICK_PERIOD_MS);
-        firebase_state = FB_STOPPED;
+        vTaskDelay(50 / portTICK_PERIOD_MS);
     }
-    
-    showLoadingBox = false;
-    firebaseTaskRunning = false;
-    vTaskDelete(NULL);
 }
 
-// ============ GERENCIAMENTO FIREBASE ============
+// ============ COMANDOS PARA FIREBASE (chamados do Core 1) ============
 void stopFirebase() {
     if (firebase_state == FB_STOPPED || firebase_state == FB_STOPPING) return;
-    if (firebaseTaskRunning) return;
     
+    Serial.println("[CMD] Solicitando parada do Firebase");
     firebase_state = FB_STOPPING;
-    firebaseTaskRunning = true;
-    
-    FirebaseState action = FB_STOPPING;
-    xTaskCreatePinnedToCore(
-        firebaseTask,
-        "StopFirebase",
-        8192,
-        (void*)&action,
-        1,
-        &firebaseTaskHandle,
-        0  // Core 0
-    );
 }
 
-void startFirebase(FirebaseState targetState) {
+void startFirebase(FirebaseState targetState, bool showLoading = true) {
     if (firebase_state == FB_STARTING || firebase_state == targetState) return;
-    if (firebaseTaskRunning) return;
     if (WiFi.status() != WL_CONNECTED) return;
     
-    firebase_state = FB_STARTING;
+    Serial.printf("[CMD] Solicitando inicio do Firebase (target: %d)\n", targetState);
     firebase_target_state = targetState;
-    firebaseTaskRunning = true;
-    showLoadingBox = true;
-    
-    FirebaseState action = FB_STARTING;
-    xTaskCreatePinnedToCore(
-        firebaseTask,
-        "StartFirebase",
-        8192,
-        (void*)&action,
-        1,
-        &firebaseTaskHandle,
-        0  // Core 0
-    );
+    firebase_state = FB_STARTING;
+    showLoadingBox = showLoading;
+    needsLoadingRedraw = showLoading;
 }
 
 // ============ FUNÇÕES AUXILIARES ============
@@ -247,13 +261,15 @@ void formatDate(String *date, int period) {
 
 void getValues() {
     auto safeGet = [](String path, String* result, int delayMs = 200) {
-        firebase->awaitGet(path, result);
+        if (xSemaphoreTake(firebaseMutex, portMAX_DELAY)) {
+            firebase->awaitGet(path, result);
+            xSemaphoreGive(firebaseMutex);
+        }
         
         unsigned long start = millis();
         while (millis() - start < delayMs) {
             yield();
             feedWatchdog();
-            wifi.loop();
         }
     };
 
@@ -325,7 +341,7 @@ void fireBaseLoadData(bool isOnLoop) {
             return;
         }
 
-        if (firebase_state != FB_READY_FULL) {
+        if (firebase_state != FB_READY_FULL || !firebase_is_ready) {
             lastSend = millis();
             return;
         }
@@ -369,21 +385,33 @@ void checkActivity(bool isOTA) {
     static bool screenFadingOut = false;
     static bool firebaseRequested = false;
     static float lastMenu = -1;
+    static bool screenFullyOff = false;
+    static unsigned long menuChangeTime = 0;
     
     // ========== DETECTA MUDANÇA DE MENU ==========
     if (menu != lastMenu && menu != 0) {
-        // Mudou de menu
+        menuChangeTime = millis();
+        Serial.printf("[UI] Mudanca de menu: %.0f -> %.0f\n", lastMenu, menu);
+        
         if (menu == 2) {
-            // Indo para adjustScreen - precisa do Firebase
-            if (firebase_state == FB_STOPPED) {
+            // Indo para adjustScreen - PRECISA do Firebase READY_LIGHT
+            if (firebase_state != FB_READY_LIGHT || !firebase_is_ready) {
+                Serial.println("[UI] Mostrando loading box para menu 2");
                 showLoadingBox = true;
-                startFirebase(FB_READY_LIGHT);
-            } else if (firebase_state == FB_READY_FULL) {
-                firebase_state = FB_READY_LIGHT;
+                needsLoadingRedraw = true;
+                
+                if (firebase_state == FB_STOPPED || firebase_state == FB_STOPPING) {
+                    startFirebase(FB_READY_LIGHT, true);
+                } else if (firebase_state == FB_READY_FULL && firebase_is_ready) {
+                    firebase_state = FB_READY_LIGHT;
+                    showLoadingBox = false;
+                } else if (firebase_state == FB_STARTING) {
+                    firebase_target_state = FB_READY_LIGHT;
+                }
             }
         } else {
-            // Saindo do adjustScreen ou mudando para outro menu
-            if (firebase_state == FB_READY_LIGHT || firebase_state == FB_READY_FULL) {
+            // Saindo do adjustScreen
+            if (firebase_state != FB_STOPPED) {
                 stopFirebase();
             }
         }
@@ -395,23 +423,18 @@ void checkActivity(bool isOTA) {
         if (!screenFadingOut) {
             screenFadingOut = true;
             firebaseRequested = false;
+            screenFullyOff = false;
         }
         
-        if (display->fadeScreenOff()) {
-            // Tela completamente apagada - inicia Firebase silenciosamente
-            
-            if (!firebaseRequested && firebase_state == FB_STOPPED) {
-                firebaseRequested = true;
-                showLoadingBox = false; // Sem loading box quando tela apagada
-                startFirebase(FB_READY_FULL);
-            }
-            
-            // Envia dados apenas se Firebase estiver completamente pronto
-            if ((firebase_state == FB_READY_FULL || firebase_state == FB_READY_LIGHT) && 
-                firebase->isReady() && xSemaphoreTake(firebaseMutex, 10 / portTICK_PERIOD_MS)) {
-                display->asyncSet();
-                xSemaphoreGive(firebaseMutex);
-            }
+        bool fadeDone = display->fadeScreenOff();
+        
+        if (fadeDone && !screenFullyOff) {
+            screenFullyOff = true;
+        }
+        
+        if (screenFullyOff && !firebaseRequested && firebase_state == FB_STOPPED) {
+            firebaseRequested = true;
+            startFirebase(FB_READY_FULL, false);
         }
         
         menu = 0;
@@ -420,9 +443,9 @@ void checkActivity(bool isOTA) {
     else if(!allIdle) {
         screenFadingOut = false;
         firebaseRequested = false;
+        screenFullyOff = false;
         
-        // Para Firebase se não estiver no adjustScreen
-        if (menu != 2 && firebase_state != FB_STOPPED && firebase_state != FB_STOPPING) {
+        if (menu != 2 && firebase_state != FB_STOPPED) {
             stopFirebase();
         }
         
@@ -433,8 +456,9 @@ void checkActivity(bool isOTA) {
 void setup() {
     Serial.begin(115200);
     
-    // ============ CRIA MUTEX ============
+    // ============ CRIA MUTEXES ============
     firebaseMutex = xSemaphoreCreateMutex();
+    displayMutex = xSemaphoreCreateMutex();
     
     // ============ INICIA WATCHDOG ============
     initWatchdog();
@@ -473,49 +497,54 @@ void setup() {
     }
     
     display->flushScreen();
+    
+    // ============ INICIA TASK DO FIREBASE NO CORE 0 ============
+    xTaskCreatePinnedToCore(
+        firebaseCoreTask,
+        "FirebaseCore",
+        16384,  // Stack maior para Firebase
+        NULL,
+        1,
+        &firebaseTaskHandle,
+        0  // CORE 0 dedicado ao Firebase
+    );
+    
+    Serial.println("[SETUP] Task Firebase criada no Core 0");
 }
 
 void loop() {
+    // ============ CORE 1 - UI E DISPLAY APENAS ============
     feedWatchdog();
     
     checkActivity(isOTA);
     
-    // ========== DESENHA LOADING BOX SE NECESSÁRIO ==========
-    static bool lastLoadingState = false;
-    if (showLoadingBox && !lastLoadingState) {
+    // ========== LOADING BOX (redesenha se necessário) ==========
+    if (needsLoadingRedraw) {
         drawLoadingBox("Conectando...");
-        lastLoadingState = true;
-    } else if (!showLoadingBox && lastLoadingState) {
-        clearLoadingBox();
-        lastLoadingState = false;
+        needsLoadingRedraw = false;
     }
     
-    display->menuSwitch(&menu);
+    // Remove loading box quando Firebase estiver pronto
+    if (showLoadingBox && firebase_state == FB_READY_LIGHT && firebase_is_ready) {
+        clearLoadingBox();
+        showLoadingBox = false;
+    }
     
-    // ========== GERENCIAMENTO WIFI + FIREBASE ==========
-    if (WiFi.status() == WL_CONNECTED) {
-        wifi.loop();
-        
-        // Firebase loop APENAS se estiver completamente ativo e não em transição
-        if ((firebase_state == FB_READY_FULL || firebase_state == FB_READY_LIGHT) && 
-            firebase->isReady() && !firebaseTaskRunning &&
-            xSemaphoreTake(firebaseMutex, 10 / portTICK_PERIOD_MS)) {
-            
-            firebase->loop();
-            xSemaphoreGive(firebaseMutex);
-        }
+    // Não desenha menu enquanto loading box ativo
+    if (!showLoadingBox) {
+        display->menuSwitch(&menu);
     } else {
-        wifi.loop();
-        
-        // Se WiFi caiu, desliga Firebase
-        if (firebase_state != FB_STOPPED && firebase_state != FB_STOPPING && !firebaseTaskRunning) {
-            stopFirebase();
+        // Redesenha loading box periodicamente
+        static unsigned long lastRedraw = 0;
+        if (millis() - lastRedraw > 500) {
+            needsLoadingRedraw = true;
+            lastRedraw = millis();
         }
     }
     
     getNow();
 
-    // ========== PROCESSA SERIAL COM TIMEOUT ==========
+    // ========== PROCESSA SERIAL ==========
     unsigned long serialStart = millis();
     while(Serial2.available() >= 5 && millis() - serialStart < 50) {
         readPacket(&data_class);

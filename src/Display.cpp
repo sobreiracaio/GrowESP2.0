@@ -172,6 +172,21 @@ void Display::mainScreen(float *menu)
 }
 void Display::adjustScreen(float *menu)
 {
+      // ========== VERIFICA SE FIREBASE ESTÁ PRONTO ==========
+    // Se não estiver pronto, mostra mensagem e não permite ajustes
+    if (!firebase->isReady()) {
+        topScreen("Ajustes", BOTH);
+        display->setTextDatum(MC_DATUM);
+        display->setTextColor(WHITE, BLACK);
+        display->drawString("Aguarde conexao...", 240, 160, 4);
+        
+        // Permite voltar ao menu anterior
+        btn[3]->read(menu, DECREMENT, 10, 0);
+        bottomScreen("    ", "    ", "                ", "Voltar");
+        return;
+    }
+
+    
     static float submenu = 0;
     float value = 0;
     unsigned long timeout = 50000;
