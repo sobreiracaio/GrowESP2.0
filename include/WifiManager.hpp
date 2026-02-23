@@ -19,6 +19,8 @@ class WifiManager {
         String email;
         String userpass;
 
+        bool credentialsLoaded = false;
+        
        
 
     
@@ -26,6 +28,7 @@ class WifiManager {
     public:
         WifiManager(Preferences *preferences, Display *tft);
         bool wifiInit();
+        bool checkCredentials();
         void loop();
         void connectToWiFi();
         bool getStatus();
@@ -37,8 +40,11 @@ class WifiManager {
         String generateNetWorkList();
         String getEmail();
         String getPass();
+        String getSSID();
+        String getLocalIP();
 
         int getSignalStrenght();
 
         void injectDisplay(Display *tft);
+        void ensureCredentialsLoaded();
 };

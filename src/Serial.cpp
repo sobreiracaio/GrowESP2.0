@@ -3,15 +3,18 @@
 
 void sendPacket(uint8_t id, float value)
 {
-    // ✅ Evita envios duplicados muito rápidos
     static uint8_t lastID = 0xFF;
     static float lastValue = -9999;
     static unsigned long lastSendTime = 0;
     
-    // Se for o mesmo pacote em menos de 100ms, ignora
-    if(id == lastID && value == lastValue && millis())// - lastSendTime < 100) 
+    // ⭐ ESPERA no mínimo 50ms entre QUALQUER pacote
+    while(millis() - lastSendTime < 50) {
+        delay(1);
+    }
+    
+    // Evita duplicados
+    if(id == lastID && value == lastValue) 
     {
-        //Serial.printf("⏭️  Pulando envio duplicado ID:0x%02X\n", id);
         return;
     }
     
@@ -19,23 +22,27 @@ void sendPacket(uint8_t id, float value)
     lastValue = value;
     lastSendTime = millis();
     
-    float multiply = value * 100;
-    uint16_t fvalue = (uint16_t)multiply;
-
+    uint32_t lvalue = (uint32_t)(value * 100);
     
-    uint8_t high = (fvalue >> 8) & 0xFF;
-    uint8_t low  = fvalue & 0xFF;
+    uint8_t byte3 = (lvalue >> 24) & 0xFF;
+    uint8_t byte2 = (lvalue >> 16) & 0xFF;
+    uint8_t byte1 = (lvalue >> 8) & 0xFF;
+    uint8_t byte0 = lvalue & 0xFF;
+    
+    uint8_t checksum = (HEADER + id + byte3 + byte2 + byte1 + byte0) & 0xFF;
 
-    uint8_t checksum = (HEADER + id + high + low) & 0xFF;
-
-    Serial.printf("📤 Enviando ID:0x%02X Val:%.2f Raw:0x%02X%02X Chk:0x%02X\n", 
-                   id, value, high, low, checksum);
+    // Serial.printf("📤 TX ID:0x%02X Val:%.2f Raw:0x%02X%02X%02X%02X Chk:0x%02X\n", 
+    //                id, value, byte3, byte2, byte1, byte0, checksum);
 
     Serial2.write(HEADER);
     Serial2.write(id);
-    Serial2.write(high);
-    Serial2.write(low);
+    Serial2.write(byte3);
+    Serial2.write(byte2);
+    Serial2.write(byte1);
+    Serial2.write(byte0);
     Serial2.write(checksum);
+    
+    Serial2.flush(); // Garante que enviou
 }
 
 
@@ -46,12 +53,12 @@ int readPacket(DataClass *data_class)
 
     uint8_t header = Serial2.read();
     
-    // ✅ DEBUG: Veja o que está chegando
-    // Serial.print("📥 Recebido do Pico - Header:0x");
-    // Serial.print(header, HEX);
-    // Serial.print(" (esperado:0x");
-    // Serial.print(HEADER, HEX);
-    // Serial.println(")");
+    //✅ DEBUG: Veja o que está chegando
+    //Serial.print("📥 Recebido do Pico - Header:0x");
+    //Serial.print(header, HEX);
+    //Serial.print(" (esperado:0x");
+    //Serial.print(HEADER, HEX);
+    //Serial.println(")");
     
     if (header != HEADER) {
         //Serial.printf("❌ Header inválido: 0x%02X\n", header);
@@ -67,8 +74,8 @@ int readPacket(DataClass *data_class)
     uint8_t low  = (uint8_t)Serial2.read();
     uint8_t checksum = (uint8_t)Serial2.read();
 
-    // Serial.printf("Recebido ID:0x%02X High:0x%02X Low:0x%02X Chk:0x%02X\n", 
-    //                id, high, low, checksum);
+     //Serial.printf("Recebido ID:0x%02X High:0x%02X Low:0x%02X Chk:0x%02X\n", 
+                    //id, high, low, checksum);
 
     uint8_t calc = (HEADER + id + high + low) & 0xFF;
     
@@ -95,8 +102,8 @@ int readPacket(DataClass *data_class)
             break;
         
         case SOIL:
-            data_class->setSoil(fvalue);
-            //Serial.printf("   -> SOIL definido: %.2f\n", fvalue);
+            data_class->setSoil(fvalue * 10);
+            //Serial.printf("   -> SOIL definido: %.2f\n", fvalue * 10);
             break;
         
         case LIGHT:
@@ -135,7 +142,7 @@ int readPacket(DataClass *data_class)
             break;
         
         default:
-           // Serial.printf("❌ ID desconhecido: 0x%02X\n", id);
+            //Serial.printf("❌ ID desconhecido: 0x%02X\n", id);
             return -3;
     }
 

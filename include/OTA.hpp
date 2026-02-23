@@ -17,26 +17,24 @@ class OTA {
         volatile size_t totalSize;    // tamanho total do firmware
         volatile size_t currentSize;  // quanto já foi gravado
         
-        int serialNum;
-        int digit1;
-        int digit2;
-        int digit3;
-
         String version;
         bool hasUpdate;
+        bool isUpdated;
 
         Preferences *prefs;
         FBase *firebase;
         Display *display;
+
+        String releaseTag = "";
+        String releaseName = "";
+        String releaseBody = "";
+        String releaseDate = "";
     
 
     public:
         OTA(Preferences *prefs, FBase *firebase, Display *display);
 
-        void setSerialNum();
-        int getSerialNum();
-        void setDigit(int position, int value);
-        int getDigit(int position);
+        bool checkForUpdates();
 
         void setBinaryPath(String path);
         void setToken(String token);
@@ -49,4 +47,10 @@ class OTA {
         void injectFbase(FBase *firebase);
         void injectDisplay(Display *display);
         int updateDevice();
+
+        int fetchReleaseInfo();
+        String getReleaseTag();  
+        String getReleaseName();
+        String getReleaseBody();
+        String getReleaseDate();
 };

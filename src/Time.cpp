@@ -2,24 +2,40 @@
 
 #include "Time.hpp"
 
-Time::Time(const char* server, const char* server1, long gmtOffset, int daylightOffset)
-    : ntpServer(server), ntpServer1(server1), gmtOffsetSec(gmtOffset), daylightOffsetSec(daylightOffset) {}
+Time::Time(WifiManager *wifi, const char* server, const char* server1, long gmtOffset, int daylightOffset)
+    : _wifi(wifi), ntpServer(server), ntpServer1(server1), gmtOffsetSec(gmtOffset), daylightOffsetSec(daylightOffset)  
+    {
+        timeinfo = {0};
+    }
 
 bool Time::begin() {
     // Sincronização inicial via NTP
-    
+    if(_wifi->getStatus() == false)
+        return false;
+
     configTime(gmtOffsetSec, daylightOffsetSec, ntpServer, ntpServer1);
     //Serial.println("Aguardando hora NTP...");
+    
+    unsigned long startMillis = millis();
+    const unsigned long timeout = 10000; // Timeout de 10 segundos
+    
     while (!getLocalTime(&timeinfo)) {
         //Serial.print(".");
+        
+        if (millis() - startMillis >= timeout) {
+            //Serial.println("\nTimeout ao sincronizar hora NTP!");
+            return false;
+        }
     }
+    
     //Serial.println("\nHora sincronizada!");
     return true;
 }
 
 bool Time::update() {
-    // Atualiza struct tm usando RTC interno
-    return getLocalTime(&timeinfo);
+    if(_wifi->getStatus() && begin())
+        return getLocalTime(&timeinfo);
+    return false;
 }
 
 String Time::getTimeString() {
@@ -94,3 +110,27 @@ bool Time::getStatus()
         return true;
     return false;
 }
+
+void Time::setgmtOffSet(int timezone)
+{
+    gmtOffsetSec = timezone * 3600;
+}
+
+long Time::getTimeZone()
+{
+    return gmtOffsetSec / 3600;
+}
+
+// struct tm Time::getNow()
+// {
+//     struct tm now = {0};
+//     now.tm_hour = getHour();
+//     now.tm_min = getMinute();
+//     now.tm_sec = getSecond();
+//     now.tm_mday = getDay();
+//     now.tm_mon = getMonth();
+//     now.tm_year = getYear();
+//     checkSync();
+
+//     return now;
+// }

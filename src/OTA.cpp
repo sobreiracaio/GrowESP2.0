@@ -4,57 +4,33 @@ OTA::OTA(Preferences *prefs, FBase *firebase, Display *display) : prefs(prefs), 
 {
     binaryUrl = "";
     token = "";
-    serialNum = 0;
-    digit1 = 0;
-    digit2 = 0;
-    digit3 = 0;
-
+   
     version = "";
+
+    totalSize = 0;
+    currentSize = 0;
+    hasUpdate = false;
+    isUpdated = false;
     
 }
 
-void OTA::setSerialNum()
+bool OTA::checkForUpdates()
 {
-    int res = (digit1 * 100) + (digit2 * 10) + digit3;
-    serialNum = res;
-}
-
-int OTA::getSerialNum()
-{   
-    return serialNum;
-}
-
-void OTA::setDigit(int position, int value)
-{
-    switch (position)
+    static String res = "";
+    static String path = "/_HasUpdate";
+    firebase->aSyncGet(path, res);
+    if(res == "false" || isUpdated == true)
     {
-    case 1:
-        digit1 = value;
-        return;
-    case 2:
-        digit2 = value;
-        return;
-    case 3:
-        digit3 = value;
-        return;
-    default:
-        return;
+        hasUpdate = false;
+        return false;
     }
-}
 
-int OTA::getDigit(int position)
-{
-    switch (position)
-    {
-    case 1:
-        return digit1;
-    case 2:
-        return digit2;
-    case 3:
-        return digit3;
-    default:
-        return -1;
-    }
+    hasUpdate = true;
+    return true;
+    // if(isUpdated == false)
+    // {
+        
+    // }
 }
 
 void OTA::injectFbase(FBase *firebase)
@@ -84,6 +60,7 @@ void OTA::setVersion(String new_version)
 
 String OTA::getVersion()
 {
+    
     return version;
 }
 
@@ -100,26 +77,18 @@ bool OTA::getHasUpdate()
 
 int OTA::updateDevice()
 {
-    isOTA = true;
-
-    
-    // Verificação do Firebase
-    if(!firebase->stopApp())
-    {
-        isOTA = false;
-        return -1;
+    if (!firebase || !firebase->stopApp()) {
+        return -1; // sem reinit pois firebase nunca parou
     }
 
+    display->logoScreen("Atualizando, aguarde!");
     WiFiClientSecure client;
     client.setInsecure();
 
-    // ========== PASSO 1: Buscar informações da release ==========
     HTTPClient https;
     if (!https.begin(client, binaryUrl))
     {
-        
-        //Serial.println("[OTA] Falha ao iniciar conexao");
-        isOTA = false;
+        firebase->init();
         return -1;
     }
 
@@ -130,78 +99,72 @@ int OTA::updateDevice()
     int httpCode = https.GET();
     if (httpCode != HTTP_CODE_OK)
     {
-       
-        //Serial.printf("[OTA] HTTP erro ao buscar release: %d\n", httpCode);
         https.end();
-        isOTA = false;
+        firebase->init();
         return -1;
     }
 
-    // Ler o JSON da resposta
     String payload = https.getString();
     https.end();
-    
-    //Serial.println("[OTA] JSON recebido, extraindo informações...");
 
-    // ========== EXTRAIR TAG/VERSÃO DA RELEASE ==========
     int tagPos = payload.indexOf("\"tag_name\":\"");
-    String releaseTag = "";
-    
     if (tagPos != -1)
     {
-        tagPos += 12; // Pular "tag_name":"
-        int tagEnd = payload.indexOf("\"", tagPos);
-        releaseTag = payload.substring(tagPos, tagEnd);
-       
-        //Serial.printf("[OTA] Tag da release: %s\n", releaseTag.c_str());
-    }
-    else
-    {
-         
-        //Serial.println("[OTA] Tag não encontrada no JSON");
+        tagPos += 12;
+        releaseTag = payload.substring(tagPos, payload.indexOf("\"", tagPos));
     }
 
-    // ========== PASSO 2: Extrair o ASSET ID ==========
+    int namePos = payload.indexOf("\"name\":\"");
+    if (namePos != -1)
+    {
+        namePos += 8;
+        releaseName = payload.substring(namePos, payload.indexOf("\"", namePos));
+    }
+
+    int bodyPos = payload.indexOf("\"body\":\"");
+    if (bodyPos != -1)
+    {
+        bodyPos += 8;
+        releaseBody = payload.substring(bodyPos, payload.indexOf("\"", bodyPos));
+        releaseBody.replace("\\r\\n", "\n");
+        releaseBody.replace("\\n", "\n");
+    }
+
+    int datePos = payload.indexOf("\"published_at\":\"");
+    if (datePos != -1)
+    {
+        datePos += 16;
+        releaseDate = payload.substring(datePos, payload.indexOf("\"", datePos));
+    }
+
     int assetsPos = payload.indexOf("\"assets\":[");
     if (assetsPos == -1)
     {
-        
-        //Serial.println("[OTA] Nenhum asset encontrado na release");
-        isOTA = false;
+        firebase->init();
         return -1;
     }
 
-    // Procurar o primeiro "id" após "assets"
     int idPos = payload.indexOf("\"id\":", assetsPos);
     if (idPos == -1)
     {
-        
-        //Serial.println("[OTA] ID do asset não encontrado");
-        isOTA = false;
+        firebase->init();
         return -1;
     }
 
-    idPos += 5; // Pular "id":
+    idPos += 5;
     int idEnd = payload.indexOf(",", idPos);
     String assetId = payload.substring(idPos, idEnd);
     assetId.trim();
 
-   
-    //Serial.printf("[OTA] Asset ID encontrado: %s\n", assetId.c_str());
-
-    // Construir URL da API para download do asset
     String assetUrl = "https://api.github.com/repos/sobreiracaio/GrowESP2.0/releases/assets/" + assetId;
 
-    // ========== PASSO 3: Baixar o binário via API ==========
     WiFiClientSecure client2;
     client2.setInsecure();
 
     HTTPClient https2;
     if (!https2.begin(client2, assetUrl))
     {
-       
-        //Serial.println("[OTA] Falha ao conectar no asset");
-        isOTA = false;
+        firebase->init();
         return -1;
     }
 
@@ -210,16 +173,11 @@ int OTA::updateDevice()
     https2.addHeader("User-Agent", "ESP32");
     https2.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
 
-    
-    //Serial.println("[OTA] Iniciando download do binário...");
-
     httpCode = https2.GET();
     if (httpCode != HTTP_CODE_OK)
     {
-       
-        //Serial.printf("[OTA] HTTP erro ao baixar binário: %d\n", httpCode);
         https2.end();
-        isOTA = false;
+        firebase->init();
         return -1;
     }
 
@@ -228,22 +186,15 @@ int OTA::updateDevice()
 
     if (totalSize <= 0)
     {
-        
-        //Serial.println("[OTA] Tamanho do binário inválido");
         https2.end();
-        isOTA = false;
+        firebase->init();
         return -1;
     }
 
-    
-    //Serial.printf("[OTA] Tamanho do binário: %d bytes\n", totalSize);
-
     if (!Update.begin(totalSize))
     {
-       
-        //Serial.printf("[OTA] Falha ao iniciar Update: %d\n", Update.getError());
         https2.end();
-        isOTA = false;
+        firebase->init();
         return -1;
     }
 
@@ -264,15 +215,11 @@ int OTA::updateDevice()
             {
                 if (Update.write(buffer, bytesRead) != bytesRead)
                 {
-                   
-                    //Serial.println("[OTA] Erro ao escrever no Update");
                     https2.end();
-                    isOTA = false;
+                    firebase->init();
                     return -1;
                 }
                 currentSize += bytesRead;
-                
-               
             }
         }
         delay(1);
@@ -280,33 +227,115 @@ int OTA::updateDevice()
 
     https2.end();
 
-    if (!Update.end(true))
+    if (!Update.end(true) || !Update.isFinished())
     {
-       
-        //Serial.printf("[OTA] Erro ao finalizar Update: %d\n", Update.getError());
-        isOTA = false;
+        firebase->init();
         return -1;
     }
 
-    if (!Update.isFinished())
-    {
-        
-        //Serial.println("[OTA] Update não foi finalizado corretamente");
-        isOTA = false;
-        return -1;
-    }
-    
-    //Serial.println("[OTA] Atualização concluída com sucesso!");
-    
-    // ========== SALVAR A TAG/VERSÃO ==========
     if (releaseTag.length() > 0)
-    {
-        //Serial.printf("[OTA] Salvando versão: %s\n", releaseTag.c_str());
         setVersion(releaseTag);
-    }
-    
-    // delay(500);
-    // ESP.restart();
 
+    firebase->init(); // restaura em sucesso também
+    delay(500);
+    firebase->aSyncSetString(safeEmail + "/Version", releaseTag);
+    display->logoScreen("Sistema Atualizado com Sucesso! Reiniciando!");
+    delay(1000);
+    ESP.restart();
     return 0;
+}
+
+int OTA::fetchReleaseInfo()
+{
+    firebase->stopApp();
+    WiFiClientSecure client;
+    client.setInsecure();
+    Serial.printf("[OTA] URL: %s\n", binaryUrl.c_str());
+    Serial.printf("[OTA] Token: %s\n", token.c_str());
+    HTTPClient https;
+    if (!https.begin(client, binaryUrl))
+    {
+        Serial.println("[OTA] Falha ao iniciar conexao");
+        firebase->init();
+        return -1;
+    }
+
+    https.addHeader("Authorization", String("token ") + token);
+    https.addHeader("Accept", "application/vnd.github.v3+json");
+    https.addHeader("User-Agent", "ESP32");
+
+    int httpCode = https.GET();
+    if (httpCode != HTTP_CODE_OK)
+    {
+        Serial.printf("[OTA] HTTP erro ao buscar release: %d\n", httpCode);
+        https.end();
+        firebase->init();
+        return -1;
+    }
+
+    String payload = https.getString();
+    https.end();
+
+    // ========== TAG/VERSÃO ==========
+    int tagPos = payload.indexOf("\"tag_name\":\"");
+    if (tagPos != -1)
+    {
+        tagPos += 12;
+        int tagEnd = payload.indexOf("\"", tagPos);
+        releaseTag = payload.substring(tagPos, tagEnd);
+    }
+
+    // ========== NOME DA RELEASE ==========
+    int namePos = payload.indexOf("\"name\":\"");
+    if (namePos != -1)
+    {
+        namePos += 8;
+        int nameEnd = payload.indexOf("\"", namePos);
+        releaseName = payload.substring(namePos, nameEnd);
+    }
+
+    // ========== DESCRIÇÃO ==========
+    int bodyPos = payload.indexOf("\"body\":\"");
+    if (bodyPos != -1)
+    {
+        bodyPos += 8;
+        int bodyEnd = payload.indexOf("\"", bodyPos);
+        releaseBody = payload.substring(bodyPos, bodyEnd);
+        releaseBody.replace("\\r\\n", "\n");
+        releaseBody.replace("\\n", "\n");
+    }
+
+    // ========== DATA DE PUBLICAÇÃO ==========
+    int datePos = payload.indexOf("\"published_at\":\"");
+    if (datePos != -1)
+    {
+        datePos += 16;
+        int dateEnd = payload.indexOf("\"", datePos);
+        releaseDate = payload.substring(datePos, dateEnd);
+    }
+
+    Serial.printf("[OTA] Tag: %s\n", releaseTag.c_str());
+    Serial.printf("[OTA] Nome: %s\n", releaseName.c_str());
+    Serial.printf("[OTA] Data: %s\n", releaseDate.c_str());
+    Serial.printf("[OTA] Descricao: %s\n", releaseBody.c_str());
+    firebase->init();
+    return 0;
+}
+
+String OTA::getReleaseTag()  { return releaseTag; }
+
+String OTA::getReleaseName() { return releaseName; }
+
+String OTA::getReleaseBody() { return releaseBody; }
+
+String OTA::getReleaseDate()
+{
+    if (releaseDate.length() < 16) return releaseDate;
+
+    String day   = releaseDate.substring(8, 10);
+    String month = releaseDate.substring(5, 7);
+    String year  = releaseDate.substring(0, 4);
+    String hour  = releaseDate.substring(11, 16);
+
+    return day + "/" + month + "/" + year + " " + hour;
 }

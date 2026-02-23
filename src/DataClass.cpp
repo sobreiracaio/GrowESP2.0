@@ -1,8 +1,8 @@
 #include "DataClass.hpp"
 
-DataClass::DataClass(Light *light)
+DataClass::DataClass(Light *light, Preferences *preferences) : prefs(preferences)
 {
-
+    
     
     temperature = 0;
     targetTemp = 30;
@@ -15,19 +15,27 @@ DataClass::DataClass(Light *light)
     soilHum = 0;
     targetSoil = 75;
     soilTolerance = 5;
-
-        
     pumpDuration = 5;
     absorptionDelay = 30;
+    timer_or_sensor = SENSOR;
+    soil_low_raw = NOT_DEFINED;
+    soil_upper_raw = NOT_DEFINED;
+    soil_calibrated_value = NOT_DEFINED;
+
+    pumpFlow = 0;
        
     dayTime[0] = 0;
     dayTime[1] = 0;
     nightTime[0] = 0;
     nightTime[1] = 0;
+    timer_or_watch = WATCH;
 
     WaterReserv = 0;
-    HumidReserv = 0;
-    ReservWarning = 20;
+    water_raw_reading = NOT_DEFINED;
+    waterCapacity= NOT_DEFINED;
+    water_calibrated_value = 0;
+    ReservWarning = 0;
+    
 
     lightStatus = false;
     pumpStatus = false;
@@ -88,11 +96,11 @@ void DataClass::setHumidTolerance(float hum_tol)
         
 }
 
+
+
 void DataClass::setSoil(float soil)
 {
-   
-        soilHum = soil;
-        
+    soilHum = soil;
 }
 
 void DataClass::setTargetSoil(float target_soil)
@@ -123,7 +131,37 @@ void DataClass::setAbsorptionDelay(float abs_delay)
         
 }
 
-void DataClass::setDayTime(float h, float m)
+float DataClass::getPumpFlow()
+{
+    return pumpFlow;
+}
+
+int DataClass::getSoilBehavior()
+{
+    return timer_or_sensor;
+}
+
+
+void DataClass::setSoilLow(int soil_low)
+{
+    soil_low_raw = soil_low;
+}
+
+void DataClass::setSoilUpper(int soil_upper)
+{
+    soil_upper_raw = soil_upper;
+}
+
+void DataClass::setSoilBehavior(int type)
+{
+    timer_or_sensor = type;
+}
+
+void DataClass::setPumpFlow(float new_flow)
+{
+    pumpFlow = new_flow;
+}
+void DataClass::setDayTime(int h, int m)
 {
    
         dayTime[0] = h;
@@ -134,7 +172,7 @@ void DataClass::setDayTime(float h, float m)
         
 }
 
-void DataClass::setNightTime(float h, float m)
+void DataClass::setNightTime(int h, int m)
 {
    
         nightTime[0] = h;
@@ -152,11 +190,15 @@ void DataClass::setWaterRes(float value)
         
 }
 
-void DataClass::setHumidRes(float value)
+void DataClass::setWaterCapacity(float new_capacity)
 {
-   
-        HumidReserv = value;
-        
+    waterCapacity = new_capacity;
+}
+
+
+void DataClass::setWaterRawReading(float raw_value)
+{
+    water_raw_reading = raw_value;
 }
 
 void DataClass::setReservWarning(float value)
@@ -246,6 +288,27 @@ float DataClass::getSoil()
     return soilHum;
 }
 
+int DataClass::getSoilLow()
+{
+    return soil_low_raw;
+}
+int DataClass::getSoilUpper()
+{
+    return soil_upper_raw;
+}
+
+float DataClass::getCalibratedSoil()
+{
+    float mapped_soil = map(getSoil(), getSoilLow(), getSoilUpper(), 0, 100);
+    
+    if(mapped_soil < 0)
+        mapped_soil = 0;
+    if(mapped_soil > 100)
+        mapped_soil = 100;
+        
+    return mapped_soil;
+}
+
 float DataClass::getTargetSoil()
 {
     return targetSoil;
@@ -266,13 +329,13 @@ float DataClass::getAbsorptionDelay()
     return absorptionDelay;
 }
 
-void DataClass::getDayTime(float *out)
+void DataClass::getDayTime(int *out)
 {
     out[0] = dayTime[0];
     out[1] = dayTime[1];
 }
 
-void DataClass::getNightTime(float *out)
+void DataClass::getNightTime(int *out)
 {
     out[0] = nightTime[0];
     out[1] = nightTime[1];
@@ -280,17 +343,24 @@ void DataClass::getNightTime(float *out)
 
 float DataClass::getWaterRes()
 {
-    float res = map(WaterReserv, 500, 0, 0, 100);
-    if (res < 0)
-        res = 0;
-    if (res > 100)
-        res = 100;
-    return res;
+    return WaterReserv;
 }
 
-float DataClass::getHumidRes()
+float DataClass::getWaterCapacity()
 {
-    return HumidReserv;
+    return waterCapacity;
+}
+
+float DataClass::getWaterRawReading()
+{
+    return water_raw_reading;
+}
+
+float DataClass::getWaterCalibrated()
+{
+    float mapped_value = map(getWaterRes(),60, getWaterRawReading(), 100, 0);
+    mapped_value = constrain(mapped_value, 0, 100);
+    return mapped_value;
 }
 
 float DataClass::getReservWarning()
@@ -328,6 +398,11 @@ bool DataClass::getDehumidStatus()
     return dehumidStatus;
 }
 
+bool DataClass::isSoilCalibrated()
+{
+    return soil_low_raw != -1 && soil_upper_raw != -1;
+}
+
 void DataClass::setIsRunning(bool stats)
 {
    
@@ -339,3 +414,5 @@ bool DataClass::getIsRunning()
 {
     return isRunning;
 }
+
+

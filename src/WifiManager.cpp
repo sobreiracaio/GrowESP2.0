@@ -8,18 +8,28 @@ void WifiManager::injectDisplay(Display *tft)
     display = tft;
 }
 
-
-bool WifiManager::wifiInit()
+void WifiManager::ensureCredentialsLoaded() 
 {
+    if (credentialsLoaded) return;  // Já carregou, não faz nada
+    
     prefs->begin("wifi", false);
     ssid = prefs->getString("ssid", "");
     password = prefs->getString("password", "");
     email = prefs->getString("email", "");
-    userpass = prefs->getString("userpass","");
+    userpass = prefs->getString("userpass", "");
+    prefs->end();
+    
+    credentialsLoaded = true;
+}
+
+
+bool WifiManager::wifiInit()
+{
+    ensureCredentialsLoaded();
 
     if (ssid.isEmpty() || password.isEmpty() || email.isEmpty() || userpass.isEmpty()) 
     {
-        display->connectionScreen("Credenciais incompletas!","Iniciando portal...");
+        //display->connectionScreen("Credenciais incompletas!","Iniciando portal...");
         delay(2000);
         startPortal();
         return false;
@@ -35,25 +45,29 @@ bool WifiManager::wifiInit()
     unsigned long start = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - start < 10000) 
     {
-        display->connectionScreen("Conectando em:",ssid.c_str());
+        ;
     }
 
     if (WiFi.status() == WL_CONNECTED) 
     {
-        display->flushScreen();
-        display->connectionScreen("Conectado em:",ssid.c_str());
-        //Serial.printf("\n✅ Conectado em %s | IP: %s\n", ssid.c_str(), WiFi.localIP().toString().c_str());
         return true;
     } 
     else 
     {
-        display->flushScreen();
-        display->connectionScreen("Falha na conexão.", "Iniciando portal...");
         startPortal();
         return false;
     }
 
     return false;
+}
+
+bool WifiManager::checkCredentials()
+{
+    if (ssid.isEmpty() || password.isEmpty() || email.isEmpty() || userpass.isEmpty()) 
+    {
+        return false;
+    }
+    return true;
 }
 
 void WifiManager::startPortal() 
@@ -137,19 +151,23 @@ void WifiManager::handleRoot()
 
 void WifiManager::handleSave() 
 {
-    if (webServer.hasArg("ssid") && webServer.hasArg("password") && webServer.hasArg("email") && webServer.hasArg("userpass")) 
+    if (webServer.hasArg("ssid") && webServer.hasArg("password") && 
+        webServer.hasArg("email") && webServer.hasArg("userpass")) 
     {
         String newSsid = webServer.arg("ssid");
         String newPass = webServer.arg("password");
         String newEmail = webServer.arg("email");
         String newUserPass = webServer.arg("userpass");
 
+        prefs->begin("wifi", false);  // ✅ Abre
         prefs->putString("ssid", newSsid);
         prefs->putString("password", newPass);
         prefs->putString("email", newEmail);
         prefs->putString("userpass", newUserPass);
+        prefs->end();  // ✅ Fecha
 
-        webServer.send(200, "text/html", "<html><body><h1>Salvo!</h1><p>O dispositivo vai reiniciar.</p></body></html>");
+        webServer.send(200, "text/html", 
+            "<html><body><h1>Salvo!</h1><p>O dispositivo vai reiniciar.</p></body></html>");
         delay(2000);
         ESP.restart();
     } 
@@ -158,6 +176,8 @@ void WifiManager::handleSave()
         webServer.send(400, "text/plain", "Faltam parametros.");
     }
 }
+
+
 
 String WifiManager::generateNetWorkList() 
 {
@@ -180,17 +200,21 @@ String WifiManager::generateNetWorkList()
 
 void WifiManager::handleReset() 
 {
+    prefs->begin("wifi", false);  // ✅ Abre
     prefs->clear();
+    prefs->end();  // ✅ Fecha
     delay(2000);
     ESP.restart();
 }
 
 String WifiManager::getEmail()
 {
+    ensureCredentialsLoaded();
     return email;
 }
 String WifiManager::getPass()
 {
+    ensureCredentialsLoaded();
     return userpass;
 }
 
@@ -245,4 +269,15 @@ void WifiManager::connectToWiFi()
  int WifiManager::getSignalStrenght()
  {
     return WiFi.RSSI();
+ }
+
+ String WifiManager::getSSID()
+ {
+    ensureCredentialsLoaded();
+    return ssid;
+ }
+
+ String WifiManager::getLocalIP()
+ {
+    return WiFi.localIP().toString();
  }

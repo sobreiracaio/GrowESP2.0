@@ -14,6 +14,7 @@
 #define AD 0x08
 #define LIGHT0 0x09 //send
 #define STATUS0 0x10
+#define PUMP_CAL 0x11
 
 //ID CODES FOR VALUES FOR RECEIVING ON SERIAL
 

@@ -1,10 +1,12 @@
 #pragma once
 
+#include <nvs_flash.h>
+
 #include "Pindefinitions.hpp"
 #include "Predefinitions.hpp"
 
 #include <Arduino.h>
-#include <ArduinoJson.h>
+//#include <ArduinoJson.h>
 
 #include <WiFi.h>
 
@@ -21,6 +23,8 @@
 
 #include <TFT_eSPI.h>
 
-#include <freertos/FreeRTOS.h>
-#include <freertos/semphr.h>
+#include "esp_task_wdt.h"
+
+//#include <freertos/FreeRTOS.h>
+//#include <freertos/semphr.h>
 
