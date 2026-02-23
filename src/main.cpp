@@ -9,6 +9,9 @@
 #include "Light.hpp"
 #include "Serial.hpp"
 
+
+
+
 //Libraries
 Preferences prefs;
 UpdateClass update;
@@ -18,179 +21,19 @@ TFT_eSPI *tft = NULL;
 //Classes
 Light light;
 WifiManager wifi(&prefs, nullptr);
-Time rtc("pool.ntp.org", "pool.ntp.br", -10800, 0);
+Time rtc( &wifi, "pool.ntp.org", "pool.ntp.br", -10800, 0);
 FBase *firebase = NULL;
+
 Display *display = NULL;
 Button* button[4] = {NULL};
-DataClass data_class(&light);
+DataClass data_class(&light, &prefs);
 OTA ota(&prefs, firebase, display);
 
 struct tm now = {0};
 String safeEmail = "";
 
-float menu = 1;
-bool initDevice = false;
-bool isOTA = false;
+int menu = -1;
 
-// Estados do Firebase
-enum FirebaseState {
-    FB_STOPPED,           
-    FB_STARTING,          
-    FB_STOPPING,          
-    FB_READY_FULL,        
-    FB_READY_LIGHT        
-};
-
-volatile FirebaseState firebase_state = FB_STOPPED;
-volatile FirebaseState firebase_target_state = FB_STOPPED;
-volatile bool firebase_is_ready = false;
-static hw_timer_t *watchdog = NULL;
-
-// ============ CONTROLE DUAL-CORE ============
-TaskHandle_t firebaseTaskHandle = NULL;
-TaskHandle_t uiTaskHandle = NULL;
-SemaphoreHandle_t firebaseMutex = NULL;
-SemaphoreHandle_t displayMutex = NULL;
-
-volatile bool showLoadingBox = false;
-volatile bool needsLoadingRedraw = false;
-
-// ============ WATCHDOG ============
-void IRAM_ATTR resetModule() {
-    ets_printf("WATCHDOG: Sistema travado! Reiniciando...\n");
-    esp_restart();
-}
-
-void initWatchdog() {
-    watchdog = timerBegin(0, 80, true);
-    timerAttachInterrupt(watchdog, &resetModule, true);
-    timerAlarmWrite(watchdog, 120000000, false);
-    timerAlarmEnable(watchdog);
-}
-
-void feedWatchdog() {
-    timerWrite(watchdog, 0);
-}
-
-// ============ LOADING BOX (CORE 1 APENAS) ============
-void drawLoadingBox(String message = "Conectando...") {
-    if (xSemaphoreTake(displayMutex, portMAX_DELAY)) {
-        int boxW = 300;
-        int boxH = 100;
-        int boxX = (480 - boxW) / 2;
-        int boxY = (320 - boxH) / 2;
-        
-        display->getDisplay()->fillRoundRect(boxX, boxY, boxW, boxH, 10, TFT_DARKGREY);
-        display->getDisplay()->drawRoundRect(boxX, boxY, boxW, boxH, 10, TFT_WHITE);
-        
-        display->getDisplay()->setTextDatum(MC_DATUM);
-        display->getDisplay()->setTextColor(TFT_WHITE, TFT_DARKGREY);
-        display->getDisplay()->drawString(message, 240, 160, 4);
-        
-        xSemaphoreGive(displayMutex);
-    }
-}
-
-void clearLoadingBox() {
-    if (xSemaphoreTake(displayMutex, portMAX_DELAY)) {
-        int boxW = 300;
-        int boxH = 100;
-        int boxX = (480 - boxW) / 2;
-        int boxY = (320 - boxH) / 2;
-        
-        display->getDisplay()->fillRect(boxX, boxY, boxW, boxH, TFT_BLACK);
-        
-        xSemaphoreGive(displayMutex);
-    }
-}
-
-// ============ TASK FIREBASE (CORE 0 - DEDICADO) ============
-void firebaseCoreTask(void *parameter) {
-    Serial.println("[CORE0] Firebase task iniciada");
-    
-    while(true) {
-        feedWatchdog();
-        
-        // ========== GERENCIA ESTADOS DO FIREBASE ==========
-        if (firebase_state == FB_STARTING && WiFi.status() == WL_CONNECTED) {
-            Serial.println("[CORE0] Iniciando Firebase...");
-            
-            if (xSemaphoreTake(firebaseMutex, portMAX_DELAY)) {
-                bool success = firebase->init();
-                
-                if (success && firebase->isReady()) {
-                    firebase_state = firebase_target_state;
-                    firebase_is_ready = true;
-                    showLoadingBox = false;
-                    Serial.println("[CORE0] Firebase pronto!");
-                } else {
-                    firebase->stopApp();
-                    firebase_state = FB_STOPPED;
-                    firebase_is_ready = false;
-                    showLoadingBox = false;
-                    Serial.println("[CORE0] Firebase falhou ao iniciar");
-                }
-                
-                xSemaphoreGive(firebaseMutex);
-            }
-        }
-        else if (firebase_state == FB_STOPPING) {
-            Serial.println("[CORE0] Parando Firebase...");
-            
-            if (xSemaphoreTake(firebaseMutex, portMAX_DELAY)) {
-                firebase->stopApp();
-                firebase_state = FB_STOPPED;
-                firebase_is_ready = false;
-                showLoadingBox = false;
-                xSemaphoreGive(firebaseMutex);
-            }
-            
-            Serial.println("[CORE0] Firebase parado");
-        }
-        
-        // ========== FIREBASE LOOP (quando ativo) ==========
-        if ((firebase_state == FB_READY_FULL || firebase_state == FB_READY_LIGHT) && 
-            firebase_is_ready && WiFi.status() == WL_CONNECTED) {
-            
-            if (xSemaphoreTake(firebaseMutex, 10 / portTICK_PERIOD_MS)) {
-                firebase->loop();
-                
-                // Envia dados se necessário
-                static unsigned long lastAsyncSend = 0;
-                if (firebase_state == FB_READY_FULL && millis() - lastAsyncSend > 60000) {
-                    display->asyncSet();
-                    lastAsyncSend = millis();
-                }
-                
-                xSemaphoreGive(firebaseMutex);
-            }
-        }
-        
-        // ========== WIFI LOOP ==========
-        wifi.loop();
-        
-        vTaskDelay(50 / portTICK_PERIOD_MS);
-    }
-}
-
-// ============ COMANDOS PARA FIREBASE (chamados do Core 1) ============
-void stopFirebase() {
-    if (firebase_state == FB_STOPPED || firebase_state == FB_STOPPING) return;
-    
-    Serial.println("[CMD] Solicitando parada do Firebase");
-    firebase_state = FB_STOPPING;
-}
-
-void startFirebase(FirebaseState targetState, bool showLoading = true) {
-    if (firebase_state == FB_STARTING || firebase_state == targetState) return;
-    if (WiFi.status() != WL_CONNECTED) return;
-    
-    Serial.printf("[CMD] Solicitando inicio do Firebase (target: %d)\n", targetState);
-    firebase_target_state = targetState;
-    firebase_state = FB_STARTING;
-    showLoadingBox = showLoading;
-    needsLoadingRedraw = showLoading;
-}
 
 // ============ FUNÇÕES AUXILIARES ============
 void initClasses() {
@@ -203,167 +46,14 @@ void initClasses() {
     wifi.injectDisplay(display);
 }
 
-void fireBaseLoadData(bool isOnLoop);
-
 void initModules() {
     display->initDisplay();
-    display->initLogoScreen();
-    wifi.wifiInit();
-    display->connectionScreen("Atualizando relogio", "     Aguarde...     ");
-    rtc.begin();
-    display->flushScreen();
-    
-    for (int i = 0; i < 4; i++)
-        button[i]->init();
-    
-    safeEmail = wifi.getEmail();
-    safeEmail.replace(".","_");
     firebase = new FBase(API_KEY, DATABASE_URL, wifi.getEmail(), wifi.getPass());
     display->injectFBase(firebase);
     ota.injectFbase(firebase);
     ota.injectDisplay(display);
-    
-    display->connectionScreen("Atualizando banco de dados", "     Aguarde...     ");
-    
-    unsigned long initStart = millis();
-    while (!firebase->init()) {
-        feedWatchdog();
-        display->connectionScreen("Atualizando banco de dados", "     Aguarde...     ");
-        
-        if (millis() - initStart > 30000) {
-            display->connectionScreen("Erro na inicializacao", "Reiniciando...");
-            delay(2000);
-            ESP.restart();
-        }
-    }
-    
-    firebase->awaitSet(safeEmail + "/Pass", wifi.getPass(), STRING);
-    feedWatchdog();
-    fireBaseLoadData(false);
-    firebase->stopApp();
-    firebase_state = FB_STOPPED;
-}
-
-void formatDate(String *date, int period) {
-    int colonIndex = date->indexOf(':');
-    if (colonIndex == -1) return;
-   
-    float hour = date->substring(0, colonIndex).toFloat();
-    float minute = date->substring(colonIndex + 1).toFloat();
-
-    if(period == DAY) {
-        data_class.setDayTime(hour, minute);
-    }
-    if(period == NIGHT) {
-        data_class.setNightTime(hour, minute);
-    }
-}
-
-void getValues() {
-    auto safeGet = [](String path, String* result, int delayMs = 200) {
-        if (xSemaphoreTake(firebaseMutex, portMAX_DELAY)) {
-            firebase->awaitGet(path, result);
-            xSemaphoreGive(firebaseMutex);
-        }
-        
-        unsigned long start = millis();
-        while (millis() - start < delayMs) {
-            yield();
-            feedWatchdog();
-        }
-    };
-
-    String dayTime = "";
-    String nightTime = "";
-    String targetTemp = "";
-    String tempTol = "";
-    String targetHumid = "";
-    String humidTol = "";
-    String targetSoil = "";
-    String pumpDur = "";
-    String absDelay = "";
-    String soilTol = "";
-    String status = "";
-    String binaryUrl = "";
-    String token = "";
-    String hasOTA = "";
-
-    safeGet("/_Binary", &binaryUrl);
-    ota.setBinaryPath(binaryUrl);
-   
-    safeGet("/_Token", &token);
-    ota.setToken(token);
-
-    safeGet("/_HasUpdate", &hasOTA);
-    ota.setHasUpdate(hasOTA == "true" ? true : false);
-    
-    safeGet(safeEmail + "/InsertedData/Light/HourOn", &dayTime);
-    formatDate(&dayTime, DAY);
-
-    safeGet(safeEmail + "/InsertedData/Light/HourOff", &nightTime);
-    formatDate(&nightTime, NIGHT);
-
-    safeGet(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp", &targetTemp);
-    data_class.setTargetTemp(targetTemp.toFloat());
-
-    safeGet(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", &tempTol);
-    data_class.setTempTolerance(tempTol.toFloat());
-
-    safeGet(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid", &targetHumid);
-    data_class.setTargetHumid(targetHumid.toFloat());
-
-    safeGet(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance", &humidTol);
-    data_class.setHumidTolerance(humidTol.toFloat());
-
-    safeGet(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil", &targetSoil);
-    data_class.setTargetSoil(targetSoil.toFloat());
-
-    safeGet(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", &pumpDur);
-    data_class.setPumpDuration(pumpDur.toFloat());
-
-    safeGet(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", &absDelay);
-    data_class.setAbsorptionDelay(absDelay.toFloat());
-
-    safeGet(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance", &soilTol);
-    data_class.setSoilTolerance(soilTol.toFloat());
-
-    safeGet(safeEmail + "/Status", &status);
-    data_class.setIsRunning(status == "true" ? true : false);
-}
-
-void fireBaseLoadData(bool isOnLoop) {
-    if(isOnLoop) {
-        const unsigned long INTERVAL_MS = 30000;
-        static unsigned long lastSend = 0;
-        unsigned long now = millis();
-
-        if (now - lastSend < INTERVAL_MS) {
-            return;
-        }
-
-        if (firebase_state != FB_READY_FULL || !firebase_is_ready) {
-            lastSend = millis();
-            return;
-        }
-
-        if (xSemaphoreTake(firebaseMutex, 100 / portTICK_PERIOD_MS)) {
-            String needChange = "";
-            firebase->awaitGet(safeEmail + "/needChange", &needChange);
-            feedWatchdog();
-            
-            if(needChange == "true") {
-                bool state = false;
-                getValues();
-                firebase->aSyncSetBool(safeEmail + "/needChange", state);
-            }
-            xSemaphoreGive(firebaseMutex);
-        }
-        
-        lastSend = millis();
-        return;
-    }
-
-    getValues();
+    for (int i = 0; i < 4; i++)
+        button[i]->init();
 }
 
 void getNow() {
@@ -376,103 +66,8 @@ void getNow() {
     rtc.checkSync();
 }
 
-void checkActivity(bool isOTA) {
-    if(isOTA) return;
-
-    bool allIdle = button[0]->getIdle() && button[1]->getIdle() &&
-                   button[2]->getIdle() && button[3]->getIdle();
-
-    static bool screenFadingOut = false;
-    static bool firebaseRequested = false;
-    static float lastMenu = -1;
-    static bool screenFullyOff = false;
-    static unsigned long menuChangeTime = 0;
-    
-    // ========== DETECTA MUDANÇA DE MENU ==========
-    if (menu != lastMenu && menu != 0) {
-        menuChangeTime = millis();
-        Serial.printf("[UI] Mudanca de menu: %.0f -> %.0f\n", lastMenu, menu);
-        
-        if (menu == 2) {
-            // Indo para adjustScreen - PRECISA do Firebase READY_LIGHT
-            if (firebase_state != FB_READY_LIGHT || !firebase_is_ready) {
-                Serial.println("[UI] Mostrando loading box para menu 2");
-                showLoadingBox = true;
-                needsLoadingRedraw = true;
-                
-                if (firebase_state == FB_STOPPED || firebase_state == FB_STOPPING) {
-                    startFirebase(FB_READY_LIGHT, true);
-                } else if (firebase_state == FB_READY_FULL && firebase_is_ready) {
-                    firebase_state = FB_READY_LIGHT;
-                    showLoadingBox = false;
-                } else if (firebase_state == FB_STARTING) {
-                    firebase_target_state = FB_READY_LIGHT;
-                }
-            }
-        } else {
-            // Saindo do adjustScreen
-            if (firebase_state != FB_STOPPED) {
-                stopFirebase();
-            }
-        }
-        lastMenu = menu;
-    }
-    
-    // ========== BOTÕES OCIOSOS (tela apagando) ==========
-    if(allIdle && initDevice) {
-        if (!screenFadingOut) {
-            screenFadingOut = true;
-            firebaseRequested = false;
-            screenFullyOff = false;
-        }
-        
-        bool fadeDone = display->fadeScreenOff();
-        
-        if (fadeDone && !screenFullyOff) {
-            screenFullyOff = true;
-        }
-        
-        if (screenFullyOff && !firebaseRequested && firebase_state == FB_STOPPED) {
-            firebaseRequested = true;
-            startFirebase(FB_READY_FULL, false);
-        }
-        
-        menu = 0;
-    }
-    // ========== BOTÕES ATIVOS (tela acendendo) ==========
-    else if(!allIdle) {
-        screenFadingOut = false;
-        firebaseRequested = false;
-        screenFullyOff = false;
-        
-        if (menu != 2 && firebase_state != FB_STOPPED) {
-            stopFirebase();
-        }
-        
-        display->fadeScreenOn();
-    }
-}
-
-void setup() {
-    Serial.begin(115200);
-    
-    // ============ CRIA MUTEXES ============
-    firebaseMutex = xSemaphoreCreateMutex();
-    displayMutex = xSemaphoreCreateMutex();
-    
-    // ============ INICIA WATCHDOG ============
-    initWatchdog();
-    
-    Serial2.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
-    initClasses();
-    
-    feedWatchdog();
-    initModules();
-    
-    light.setTimeFunction(getNow);
-
-    initDevice = true;
-    
+void sendDataStartUP()
+{
     float lightValue = data_class.getIsRunning() ? light.getStatus() : 0;
     uint8_t arrID[10] = {TT, TTOL, TH, HTOL, TS, STOL, PD, AD, LIGHT0, STATUS0};
     float arrVal[10] = {
@@ -493,70 +88,421 @@ void setup() {
     for (int i = 0; i < count; i++) {    
         sendPacket(arrID[i], arrVal[i]);
         delay(500);
-        feedWatchdog();
+        //feedWatchdog();
     }
-    
-    display->flushScreen();
-    
-    // ============ INICIA TASK DO FIREBASE NO CORE 0 ============
-    xTaskCreatePinnedToCore(
-        firebaseCoreTask,
-        "FirebaseCore",
-        16384,  // Stack maior para Firebase
-        NULL,
-        1,
-        &firebaseTaskHandle,
-        0  // CORE 0 dedicado ao Firebase
-    );
-    
-    Serial.println("[SETUP] Task Firebase criada no Core 0");
+    sendPacket(PUMP_CAL, false);
 }
 
-void loop() {
-    // ============ CORE 1 - UI E DISPLAY APENAS ============
-    feedWatchdog();
-    
-    checkActivity(isOTA);
-    
-    // ========== LOADING BOX (redesenha se necessário) ==========
-    if (needsLoadingRedraw) {
-        drawLoadingBox("Conectando...");
-        needsLoadingRedraw = false;
+void formatDate(String *date, int period) {
+    int colonIndex = date->indexOf(':');
+    if (colonIndex == -1) return;
+   
+    float hour = date->substring(0, colonIndex).toFloat();
+    float minute = date->substring(colonIndex + 1).toFloat();
+
+    if(period == DAY) {
+        data_class.setDayTime(hour, minute);
     }
-    
-    // Remove loading box quando Firebase estiver pronto
-    if (showLoadingBox && firebase_state == FB_READY_LIGHT && firebase_is_ready) {
-        clearLoadingBox();
-        showLoadingBox = false;
+    if(period == NIGHT) {
+        data_class.setNightTime(hour, minute);
     }
+}
+
+
+void sendSensorActuatorData()
+{
+    if (!data_class.getIsRunning()) return;
     
-    // Não desenha menu enquanto loading box ativo
-    if (!showLoadingBox) {
-        display->menuSwitch(&menu);
-    } else {
-        // Redesenha loading box periodicamente
-        static unsigned long lastRedraw = 0;
-        if (millis() - lastRedraw > 500) {
-            needsLoadingRedraw = true;
-            lastRedraw = millis();
+    static String version = "";
+    static unsigned long lastSend = 0;
+    if (millis() - lastSend < 30000) return;
+    lastSend = millis();
+
+    static float last_sensors[4] = {0, 0, 0, 0};
+    static bool last_actuators[6] = {false, false, false, false, false, false};
+
+    static const String sensors_paths[4] = {
+        "/Readings/Sensor/Temperature",
+        "/Readings/Sensor/Humidity",
+        "/Readings/Sensor/Soil",
+        "/Readings/Sensor/WaterReserv"
+    };
+
+    static const String actuators_paths[6] = {
+        "/Readings/Actuator/LightStatus",
+        "/Readings/Actuator/PumpStatus",
+        "/Readings/Actuator/CoolerStatus",
+        "/Readings/Actuator/HeaterStatus",
+        "/Readings/Actuator/HumidStatus",
+        "/Readings/Actuator/DehumidStatus"
+    };
+
+    float sensors[4] = {
+        data_class.getTemp(),
+        data_class.getHumid(),
+        data_class.getCalibratedSoil(),
+        data_class.getWaterCalibrated()
+    };
+
+    bool actuators[6] = {
+        data_class.getLightStatus(),
+        data_class.getPumpStatus(),
+        data_class.getCoolerStatus(),
+        data_class.getHeaterStatus(),
+        data_class.getHumidStatus(),
+        data_class.getDehumidStatus()
+    };
+
+    for (int i = 0; i < sizeof(sensors) / sizeof(sensors[0]); i++)
+    {
+        if (sensors[i] != last_sensors[i])
+        {
+            firebase->aSyncSetFloat(safeEmail + sensors_paths[i], sensors[i]);
+            last_sensors[i] = sensors[i];
+        }
+    }
+
+    for (int j = 0; j < sizeof(actuators) / sizeof(actuators[0]); j++)
+    {
+        if (actuators[j] != last_actuators[j])
+        {
+            firebase->aSyncSetBool(safeEmail + actuators_paths[j], actuators[j]);
+            last_actuators[j] = actuators[j];
         }
     }
     
-    getNow();
+    if(ota.getVersion() != version)
+    {
+        firebase->aSyncGet(safeEmail + "/Version", version);
+        ota.setVersion(version);
+        version = ota.getVersion();
+    }
+}
 
-    // ========== PROCESSA SERIAL ==========
+void ButtonIdle()
+{
+    static int brightness = 255;
+    static unsigned long lastStep = 0;
+    const unsigned long stepInterval = 1; // ms entre cada passo ~2 segundos total
+
+    bool idle = button[0]->getIdle() && button[1]->getIdle() && 
+                button[2]->getIdle() && button[3]->getIdle();
+
+    if (idle)
+    {
+        // fade down não bloqueante
+        if (brightness > 0 && millis() - lastStep > stepInterval) {
+            lastStep = millis();
+            brightness--;
+            ledcWrite(0, brightness);
+        }
+
+        for (int i = 0; i < 4; i++) {
+            if (button[i]->read()) break;
+        }
+
+        if (brightness == 0) {
+            menu = -2;
+            sendSensorActuatorData();
+        }
+    }
+    else
+    {
+        // fade up não bloqueante
+        if (brightness < 255 && millis() - lastStep > stepInterval) {
+            lastStep = millis();
+            brightness++;
+            ledcWrite(0, brightness);
+            //menu = -2;
+        }
+    }
+}
+
+
+void receiveFirebaseData()
+{
+    struct PathData {
+        const char* path;
+        bool needsPrefix;
+    };
+    
+    PathData paths[] = {
+        {"/_Binary", false},
+        {"/_Token", false},
+        {"/_HasUpdate", false},
+        {"/InsertedData/Light/HourOn", true},
+        {"/InsertedData/Light/HourOff", true},
+        {"/InsertedData/Sensor/Temperature/TargetTemp", true},
+        {"/InsertedData/Sensor/Temperature/TempTolerance", true},
+        {"/InsertedData/Sensor/Humid/TargetHumid", true},
+        {"/InsertedData/Sensor/Humid/HumidTolerance", true},
+        {"/InsertedData/Sensor/Soil/TargetSoil", true},
+        {"/InsertedData/Sensor/Soil/PumpDuration", true},
+        {"/InsertedData/Sensor/Soil/AbsorptionDelay", true},  
+        {"/InsertedData/Sensor/Soil/SoilTolerance", true},
+        {"/InsertedData/Sensor/Soil/Calibration/SoilSensor/Dry", true},
+        {"/InsertedData/Sensor/Soil/Calibration/SoilSensor/Wet", true},
+        {"/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow", true},  
+        {"/InsertedData/Sensor/WaterReserv/Calibration/Reserv", true},
+        {"/InsertedData/Sensor/WaterReserv/Calibration/Capacity", true},
+        {"/Version", true},
+        {"/Status", true}  
+    };
+    
+    int paths_size = sizeof(paths) / sizeof(paths[0]);  // ✅ Tamanho correto
+
+    for(int i = 0; i < paths_size; i++)
+    {
+        String fullPath = paths[i].needsPrefix ? 
+                          safeEmail + paths[i].path : 
+                          String(paths[i].path);
+        
+        String data = "";
+        firebase->awaitGet(fullPath, &data);
+        
+        switch (i)
+        {
+            case 0:
+                ota.setBinaryPath(data);
+                break;
+            
+            case 1:
+                ota.setToken(data);
+                break;
+            
+            case 2:
+                ota.setHasUpdate(data == "true");
+                break;
+
+            case 3:
+                formatDate(&data, DAY);
+                data_class.getDayTime(display->day);
+                break;
+
+            case 4:
+                formatDate(&data, NIGHT);
+                data_class.getNightTime(display->night);
+                break;
+
+            case 5:
+                data_class.setTargetTemp(data.toFloat());
+                break;
+
+            case 6:
+                data_class.setTempTolerance(data.toFloat());
+                break;
+
+            case 7:
+                data_class.setTargetHumid(data.toFloat());
+                break;
+
+            case 8:
+                data_class.setHumidTolerance(data.toFloat());
+                break;
+
+            case 9:
+                data_class.setTargetSoil(data.toFloat());
+                break;
+            
+            case 10:
+                data_class.setPumpDuration(data.toFloat());
+                break;
+            
+            case 11:
+                data_class.setAbsorptionDelay(data.toFloat());
+                break;
+            
+            case 12:
+                data_class.setSoilTolerance(data.toFloat());
+                break;
+            
+            case 13:
+                data_class.setSoilLow(data.toInt());
+                break;
+            
+            case 14:
+                data_class.setSoilUpper(data.toInt());
+                break;
+            
+            case 15:
+                data_class.setPumpFlow(data.toFloat());
+                break;
+            
+            case 16:
+                data_class.setWaterRawReading(data.toFloat());
+                break;
+
+            case 17:
+                data_class.setWaterCapacity(data.toFloat());
+                break;
+            
+            case 18:
+                ota.setVersion(data);
+                break;
+            
+            case 19:
+                data_class.setIsRunning(data == "true");
+                //Serial.printf("Status : %d\n", data_class.getIsRunning());
+                break;
+        }
+    }
+}
+
+
+
+void setup() 
+{
+    //nvs_flash_erase();
+    initClasses();
+    initModules();
+    display->logoScreen("Inicializando sistemas de armazenamento...");
+    delay(1000);
+    esp_err_t err = nvs_flash_init();
+    if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        nvs_flash_erase();
+        nvs_flash_init();
+    }
+    Serial.begin(115200);
+    display->logoScreen("Ajustando protocolos de comunicacao...");
+    delay(500);
+    Serial2.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
+    Serial2.flush();
+    
+    
+    display->logoScreen("Inicializando equipamento...");
+    delay(500);
+    light.setTimeFunction(getNow);
+    
+
+    wifi.ensureCredentialsLoaded();
+
+    if(wifi.checkCredentials())
+    {
+        display->logoScreen("Tentando conectar a: " + wifi.getSSID());
+        if(wifi.wifiInit())
+        {
+            rtc.begin();
+            
+            display->logoScreen("Conectado a internet!");
+            delay(500);
+            display->logoScreen("Conectando ao banco de dados! Aguarde!");
+        }
+
+        safeEmail = wifi.getEmail();
+        safeEmail.replace(".","_");
+        
+        if(firebase->init() && firebase->isReady() && firebase->isHealthy())
+        {
+            receiveFirebaseData();
+            display->logoScreen("Conectado ao banco de dados!");
+        }
+    }
+    else
+    {
+        display->logoScreen("Internet nao configurada, prosseguindo para menu de configuracao");
+        menu = 6;
+    }
+
+    if(!wifi.getStatus() && !rtc.getStatus())
+        display->logoScreen("Iniciando! Aguarde! Internet nao conectada, sem relogio!");
+    else
+        display->logoScreen("Iniciando! Aguarde!");
+
+    sendDataStartUP();
+    
+    delay(500);
+    ota.fetchReleaseInfo();
+    
+  
+}
+
+void loop() 
+{
+    if(wifi.getStatus() && rtc.getStatus())
+        getNow();
+    
+    ButtonIdle();
+        
+           
     unsigned long serialStart = millis();
     while(Serial2.available() >= 5 && millis() - serialStart < 50) {
         readPacket(&data_class);
-        feedWatchdog();
+        //feedWatchdog();
     }
-
+    
     float lightValue = data_class.getIsRunning() ? light.getStatus() : 0;
     sendPacket(LIGHT0, lightValue);
     
     light.run(data_class.getIsRunning());
+
+    static int last_menu = -2;
+
+    if (menu < -1)
+        menu = -1;
+
+    if(last_menu != menu)
+    {
+        display->drawBackGround();
+        last_menu = menu;
+    }
+
+    // static bool wasIdle = false;
+    // bool isIdle = button[0]->getIdle() && button[1]->getIdle() && 
+    //             button[2]->getIdle() && button[3]->getIdle();
+
+    // // detecta transição idle -> ativo
+    // if (wasIdle && !isIdle)
+    //     last_menu = -2; // força redraw no próximo ciclo
+
+    // wasIdle = isIdle;
+
+        
+    switch (menu)
+    {
+        case -1:
+
+            display->mainScreen(&menu);
+            break;
+        
+        case 0:
+
+            display->monitorMenu(&menu);
+            break;
     
-    fireBaseLoadData(true);
+        case 1:
+        
+            display->lightMenu(&menu);
+            break;
     
-    feedWatchdog();
+        case 2:
+            
+            display->tempMenu(&menu); 
+            break;
+        
+        case 3:
+            
+            display->humidMenu(&menu);
+            break;
+        
+        case 4:
+            if(data_class.getSoilBehavior() == SENSOR)
+                display->soilMenuSensor(&menu);
+            if(data_class.getSoilBehavior() == TIMER)
+                display->soilMenuTimer(&menu);
+            break;
+        
+        case 5:
+
+            display->calibrationScreen(&menu);            
+            break;
+        
+        case 6:
+            
+            display->setupScreen(&menu);
+            break;
+
+        default:
+            break;
+    }
+
 }

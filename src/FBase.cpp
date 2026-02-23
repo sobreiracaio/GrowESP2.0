@@ -34,42 +34,47 @@ FBase::FBase(const String& api, const String& db_url, const String& user_email, 
       {}
 
 bool FBase::init() {
-    // ✅ TIMEOUT MÁXIMO PARA INIT
     const unsigned long INIT_TIMEOUT = 30000; // 30 segundos
+    const unsigned long LOOP_INTERVAL = 50;   // Intervalo entre loops
+    
     unsigned long startTime = millis();
+    unsigned long lastLoopTime = 0;
     
-    ssl_client.setTimeout(5); // Timeout curto para operações SSL
+    ssl_client.setTimeout(5);
     
-    if (ssl_client.connected()) 
-    {
+    if (ssl_client.connected()) {
         ssl_client.stop();
-        delay(100);
     }
     
     ssl_client.setInsecure();
     
     initializeApp(aClient, app, getAuth(user_auth), processData, "authTask");
     
-    // ✅ Loop com timeout forçado
-    while (app.isInitialized() && !app.ready()) 
-    {
-        if (millis() - startTime > INIT_TIMEOUT) {
-            // ✅ TIMEOUT! Força parada
+    // Loop sem bloqueio com timeout
+    while (app.isInitialized() && !app.ready()) {
+        unsigned long currentTime = millis();
+        
+        // Timeout
+        if (currentTime - startTime > INIT_TIMEOUT) {
             if (ssl_client.connected()) ssl_client.stop();
             authenticated = false;
             return false;
         }
         
-        app.loop();
+        // Executa loop apenas no intervalo definido
+        if (currentTime - lastLoopTime >= LOOP_INTERVAL) {
+            lastLoopTime = currentTime;
+            app.loop();
+        }
+        
         yield(); // Mantém watchdog feliz
-        delay(50);
     }
     
     if (app.ready()) {
         authenticated = true;
         app.getApp<RealtimeDatabase>(Database);
         Database.url(dbUrl.c_str());
-        aClient.setSyncReadTimeout(10); // ✅ Reduzido de 60s para 10s
+        aClient.setSyncReadTimeout(10);
         aClient.setSyncSendTimeout(10);
         return true;
     }
@@ -83,21 +88,31 @@ bool FBase::stopApp()
 {
     if (!authenticated) return true;
     
-    // ✅ TIMEOUT PARA STOP
     const unsigned long STOP_TIMEOUT = 3000; // 3 segundos
+    const unsigned long CHECK_INTERVAL = 10; // Verifica a cada 10ms
+    
     unsigned long startTime = millis();
+    unsigned long lastCheckTime = 0;
     
     aClient.stopAsync(true);
     
-    // ✅ Espera não-bloqueante com timeout
+    // Espera não-bloqueante com timeout
     while (ssl_client.connected()) {
-        if (millis() - startTime > STOP_TIMEOUT) {
-            // ✅ FORÇA FECHAMENTO
+        unsigned long currentTime = millis();
+        
+        // Timeout - força fechamento
+        if (currentTime - startTime > STOP_TIMEOUT) {
             ssl_client.stop();
             break;
         }
-        yield();
-        delay(10);
+        
+        // Verifica status apenas no intervalo definido
+        if (currentTime - lastCheckTime >= CHECK_INTERVAL) {
+            lastCheckTime = currentTime;
+            // ssl_client.connected() já é verificado no while
+        }
+        
+        yield(); // Mantém watchdog feliz
     }
     
     authenticated = false;
@@ -145,26 +160,100 @@ void FBase::aSyncGet(String& path, String &result)
     Database.get(aClient, path.c_str(), asyncCallback, false, "aSyncGetTask");
 }
 
+static bool _pendingString = false;
+
 void FBase::aSyncSetString(String &path, String &value)
 {
-    static String lastValue = "";
-    if (!isReady() || lastValue == value) return;
-    Database.set(aClient, path, value.c_str());
-    lastValue = value;
+    if (!isReady() || _pendingString) return;
+
+    _pendingString = true;
+
+    Database.set(aClient, path, value.c_str(), [](AsyncResult &result) {
+        _pendingString = false;
+        if (result.isError())
+            Serial.printf("[Firebase] Erro string: %s\n", result.error().message().c_str());
+    });
+
+    unsigned long timeout = millis();
+    unsigned long lastYield = millis();
+
+    while (_pendingString && millis() - timeout < 3000) {
+        loop();
+        esp_task_wdt_reset();
+        if (millis() - lastYield > 10) {
+            lastYield = millis();
+            yield();
+        }
+    }
+
+    if (_pendingString) {
+        Serial.println("[Firebase] timeout string");
+        _pendingString = false;
+    }
 }
+
+static bool _pendingFloat = false;
 
 void FBase::aSyncSetFloat(String &path, float &value)
 {
-    static float lastValue = 0;
-    if (!isReady() || lastValue == value) return;
-    Database.set(aClient, path, value);
-    lastValue = value;
+    if (!isReady() || _pendingFloat) return;
+
+    _pendingFloat = true;
+
+    Database.set(aClient, path, value, [](AsyncResult &result) {
+        _pendingFloat = false;
+        if (result.isError())
+            Serial.printf("[Firebase] Erro float: %s\n", result.error().message().c_str());
+    });
+
+    unsigned long timeout = millis();
+    unsigned long lastYield = millis();
+
+    while (_pendingFloat && millis() - timeout < 3000) {
+        loop();
+        esp_task_wdt_reset();
+        if (millis() - lastYield > 10) {
+            lastYield = millis();
+            yield();
+        }
+    }
+
+    if (_pendingFloat) {
+        Serial.println("[Firebase] timeout float");
+        _pendingFloat = false;
+    }
 }
+
+static bool _pendingBool = false;
 
 void FBase::aSyncSetBool(String &path, bool &value)
 {
-    if (!isReady()) return;
-    Database.set(aClient, path, value);
+    if (!isReady() || _pendingBool) return;
+
+    _pendingBool = true;
+
+    Database.set(aClient, path, value, [](AsyncResult &result) {
+        _pendingBool = false;
+        if (result.isError())
+            Serial.printf("[Firebase] Erro bool: %s\n", result.error().message().c_str());
+    });
+
+    unsigned long timeout = millis();
+    unsigned long lastYield = millis();
+
+    while (_pendingBool && millis() - timeout < 3000) {
+        loop();
+        esp_task_wdt_reset();
+        if (millis() - lastYield > 10) {
+            lastYield = millis();
+            yield();
+        }
+    }
+
+    if (_pendingBool) {
+        Serial.println("[Firebase] timeout bool");
+        _pendingBool = false;
+    }
 }
 
 void FBase::awaitGet(String& path, String *result)
