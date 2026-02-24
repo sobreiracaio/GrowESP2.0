@@ -52,12 +52,6 @@ class Display {
         Button **btn;
         DataClass *dataClass;
 
-        TFT_eSprite _boxSprite;
-        int _boxSpriteW = 0;
-        int _boxSpriteH = 0;
-
-        
-
         uint16_t pulseColorTimed(uint16_t c1, uint16_t c2, float speed);
         void drawArcGauge(int x, int y, float value, float targetValue, float ceiling_value, float tolerance, String label, String unit, int option = 0);
         
@@ -67,6 +61,8 @@ class Display {
         void botScreen(String labels[4]);
         void drawAntenna();
         void waitBox();
+
+        
         
         
         public:
@@ -99,7 +95,7 @@ class Display {
         void wifiConfScreen(int *menu);
         void clockConfScreen(int *menu);
         void updateConfScreen(int *menu);
-        void channelConfScreen(int *menu);
+        
         void aboutConfScreen(int *menu);
 
         void connectionScreen(String label_1, String label_2);
