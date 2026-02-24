@@ -236,25 +236,47 @@ int OTA::updateDevice()
     if (releaseTag.length() > 0)
         setVersion(releaseTag);
 
+    if (releaseTag.length() > 0)
+    setVersion(releaseTag);
+
     if (firebase->init()) 
     {
         unsigned long timeout = millis();
         while (!firebase->isHealthy() && millis() - timeout < 15000) {
+            esp_task_wdt_reset();
             firebase->loop();
             delay(50);
         }
 
-        if (firebase->isHealthy()) {
-            // aguarda mais um pouco para estabilizar a conexão
-            delay(500);
-            firebase->aSyncSetString(safeEmail + "/Version", releaseTag);
+        if (firebase->isHealthy()) 
+        {
+            delay(1000); // estabiliza conexão
+            
+            // tenta confirmar escrita antes de reiniciar
+            String check = "";
+            unsigned long writeTimeout = millis();
+            
+            while (check != releaseTag && millis() - writeTimeout < 20000) 
+            {
+                esp_task_wdt_reset();
+                firebase->awaitSet(safeEmail + "/Version", releaseTag, STRING);
+                delay(300);
+                firebase->awaitGet(safeEmail + "/Version", &check);
+                Serial.printf("[OTA] Version no banco: '%s' esperado: '%s'\n", check.c_str(), releaseTag.c_str());
+                delay(300);
+            }
+
+            if (check == releaseTag)
+                Serial.println("[OTA] Versao confirmada no banco!");
+            else
+                Serial.println("[OTA] Timeout ao confirmar versao, reiniciando mesmo assim");
         }
     }
 
-    display->logoScreen("Sistema Atualizado com Sucesso! Reiniciando!");
-    delay(500);
-    ESP.restart();
-    return 0;
+display->logoScreen("Sistema Atualizado com Sucesso! Reiniciando!");
+delay(500);
+ESP.restart();
+return 0;
 }
 
 int OTA::fetchReleaseInfo()

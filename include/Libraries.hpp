@@ -6,7 +6,7 @@
 #include "Predefinitions.hpp"
 
 #include <Arduino.h>
-//#include <ArduinoJson.h>
+
 
 #include <WiFi.h>
 
@@ -25,6 +25,4 @@
 
 #include "esp_task_wdt.h"
 
-//#include <freertos/FreeRTOS.h>
-//#include <freertos/semphr.h>
 

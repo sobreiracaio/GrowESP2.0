@@ -33,7 +33,7 @@ bool Time::begin() {
 }
 
 bool Time::update() {
-    if(_wifi->getStatus() && begin())
+    if(_wifi->getStatus())
         return getLocalTime(&timeinfo);
     return false;
 }

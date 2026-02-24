@@ -9,7 +9,7 @@ Display::Display(TFT_eSPI *tft, FBase *fbase, Time *time, OTA *ota, WifiManager 
                             night[i] = 0;
                         }
 
-                        gradientCache[3][270] = {0};
+                        memset(gradientCache, 0, sizeof(gradientCache));
                         gaugeSprite = new TFT_eSprite(display);
                         gaugeSprite->createSprite(110, 120);
                         gaugeSprite->setColorDepth(16); // 16-bit color
