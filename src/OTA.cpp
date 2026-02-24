@@ -236,11 +236,23 @@ int OTA::updateDevice()
     if (releaseTag.length() > 0)
         setVersion(releaseTag);
 
-    firebase->init(); // restaura em sucesso também
-    delay(500);
-    firebase->aSyncSetString(safeEmail + "/Version", releaseTag);
+    if (firebase->init()) 
+    {
+        unsigned long timeout = millis();
+        while (!firebase->isHealthy() && millis() - timeout < 15000) {
+            firebase->loop();
+            delay(50);
+        }
+
+        if (firebase->isHealthy()) {
+            // aguarda mais um pouco para estabilizar a conexão
+            delay(500);
+            firebase->aSyncSetString(safeEmail + "/Version", releaseTag);
+        }
+    }
+
     display->logoScreen("Sistema Atualizado com Sucesso! Reiniciando!");
-    delay(1000);
+    delay(500);
     ESP.restart();
     return 0;
 }

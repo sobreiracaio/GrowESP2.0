@@ -242,7 +242,8 @@ void receiveFirebaseData()
         {"/InsertedData/Sensor/Soil/SoilTolerance", true},
         {"/InsertedData/Sensor/Soil/Calibration/SoilSensor/Dry", true},
         {"/InsertedData/Sensor/Soil/Calibration/SoilSensor/Wet", true},
-        {"/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow", true},  
+        {"/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow", true},
+        {"/InsertedData/Sensor/Soil/Calibration/Behavior", true},  
         {"/InsertedData/Sensor/WaterReserv/Calibration/Reserv", true},
         {"/InsertedData/Sensor/WaterReserv/Calibration/Capacity", true},
         {"/Version", true},
@@ -329,23 +330,83 @@ void receiveFirebaseData()
                 break;
             
             case 16:
+                data_class.setSoilBehavior(data.toFloat());
+                break;
+            
+            case 17:
                 data_class.setWaterRawReading(data.toFloat());
                 break;
 
-            case 17:
+            case 18:
                 data_class.setWaterCapacity(data.toFloat());
                 break;
             
-            case 18:
+            case 19:
                 ota.setVersion(data);
                 break;
             
-            case 19:
+            case 20:
                 data_class.setIsRunning(data == "true");
                 //Serial.printf("Status : %d\n", data_class.getIsRunning());
                 break;
         }
     }
+}
+
+void initFirebaseStructure()
+{
+    String status = "";
+    firebase->awaitGet(safeEmail + "/Status", &status);
+    
+    Serial.printf("[Firebase] Status retornado: '%s'\n", status.c_str());
+    
+    // estrutura já existe, não faz nada
+    if (status == "true" || status == "false")
+    {
+        display->logoScreen("Dados existentes carregados!");
+        delay(500);
+        return;
+    }
+
+    // permission denied = nó não existe ainda = primeiro acesso
+    // qualquer outro erro também tenta criar
+    display->logoScreen("Primeiro acesso, criando estrutura...");
+
+    bool running = false;
+    firebase->aSyncSetBool(safeEmail + "/Status", running);
+    
+    String emailStr = wifi.getEmail();
+    firebase->aSyncSetString(safeEmail + "/email", emailStr);
+
+    String ver = ota.getVersion();
+    firebase->aSyncSetString(safeEmail + "/Version", ver);
+    
+    String hourOn = "08:00";
+    String hourOff = "22:00";
+    firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hourOn);
+    firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hourOff);
+    
+    float targetTemp = data_class.getTargetTemp();
+    float tempTol = data_class.getTempTolerance();
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp", targetTemp);
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", tempTol);
+    
+    float targetHumid = data_class.getTargetHumid();
+    float humidTol = data_class.getHumidTolerance();
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid", targetHumid);
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance", humidTol);
+    
+    float targetSoil = data_class.getTargetSoil();
+    float soilTol = data_class.getSoilTolerance();
+    float pumpDur = data_class.getPumpDuration();
+    float absDelay = data_class.getAbsorptionDelay();
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil", targetSoil);
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance", soilTol);
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", pumpDur);
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", absDelay);
+
+    display->logoScreen("Estrutura criada com sucesso!");
+    delay(1000);
 }
 
 
@@ -393,6 +454,7 @@ void setup()
         
         if(firebase->init() && firebase->isReady() && firebase->isHealthy())
         {
+            initFirebaseStructure();
             receiveFirebaseData();
             display->logoScreen("Conectado ao banco de dados!");
         }

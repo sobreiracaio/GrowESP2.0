@@ -1089,13 +1089,16 @@ void Display::soilMenuTimer(int *menu)
         if(selection == 0)
         {
             dataClass->setAbsorptionDelay(abs_delay * 3600);
+            float delay = dataClass->getAbsorptionDelay();
             sendPacket(AD, dataClass->getAbsorptionDelay());
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", delay);
             //Serial.printf("AD: %f\n", dataClass->getAbsorptionDelay());
         }
         if(selection == 1)
         {
             dataClass->setPumpDuration(pump_duration);
             sendPacket(PD, dataClass->getPumpDuration());
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", pump_duration);
             //Serial.printf("PD: %f\n", dataClass->getPumpDuration());
         }
         if(selection != 1)
@@ -1484,16 +1487,25 @@ void Display::wateringCalibScreen(int *menu)
         if(selection == 0)
         {
             dataClass->setSoilBehavior(SENSOR);
+            float behavior = SENSOR;
+            
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Behavior", behavior);
             dataClass->getTargetSoil() == 150 ? dataClass->setTargetSoil(50) : dataClass->setTargetSoil(dataClass->getTargetSoil());
             dataClass->setAbsorptionDelay(300);
+            float abs = 300;
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", abs);
             sendPacket(TS, dataClass->getTargetSoil());
 
         }
         if(selection == 1)
         {
             dataClass->setSoilBehavior(TIMER);
+            float behavior = TIMER;
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Behavior", behavior);
             dataClass->setTargetSoil(150);
             dataClass->setAbsorptionDelay(3600);
+            float abs = 3600;
+            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", abs);
             sendPacket(TS, dataClass->getTargetSoil());
         }
         // if(selection != 1)
@@ -1804,8 +1816,8 @@ void Display::updateConfScreen(int *menu)
     if(btn[2]->read())
     {
         ota->fetchReleaseInfo();
-        if(selection == 1)
-            //ota->updateDevice();
+        if(selection == 1 && (ota->getVersion() != ota->getReleaseTag()))
+            ota->updateDevice();
         if(selection != 1)
             selection++;
         else
@@ -1826,11 +1838,11 @@ void Display::updateConfScreen(int *menu)
     }
 
 
-    boxButton(40, 50, 400, 100, GREEN, NULL, true, "Versao atual: " + ota->getVersion(), "ATUALIZAR", 4);
+    boxButton(40, 50, 400, 100, GREEN, NULL, true, "Versao atual: " + ota->getVersion(), selection == 0 ? " VERIFICAR " : "ATUALIZAR", 4);
     display->setTextColor(WHITE, DARK_GREY);
     if(ota->getVersion() != ota->getReleaseTag())
     {
-        display->drawString("Notas da nova versao:" + ota->getReleaseTag() + " - " + ota->getReleaseDate(), 40, 160, 2);
+        display->drawString("Notas da nova versao: " + ota->getReleaseTag() + " - " + ota->getReleaseDate(), 40, 160, 2);
         String notes[2] = {ota->getReleaseName(), ota->getReleaseBody()};
         for(int i = 0; i < 2; i++)
             display->drawString(notes[i], 40, 175 +(15 * i), 2);
