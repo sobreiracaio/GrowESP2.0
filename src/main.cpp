@@ -85,7 +85,8 @@ void sendDataStartUP()
     
     const int count = sizeof(arrID) / sizeof(arrID[0]);
     
-    for (int i = 0; i < count; i++) {    
+    for (int i = 0; i < count; i++) {
+        esp_task_wdt_reset();    
         sendPacket(arrID[i], arrVal[i]);
         delay(500);
         //feedWatchdog();
@@ -185,12 +186,14 @@ void ButtonIdle()
     static unsigned long lastStep = 0;
     const unsigned long stepInterval = 1; // ms entre cada passo ~2 segundos total
 
+    esp_task_wdt_reset(); // ← sempre reseta em cada chamada
+
     bool idle = button[0]->getIdle() && button[1]->getIdle() && 
                 button[2]->getIdle() && button[3]->getIdle();
 
     if (idle)
     {
-        // fade down não bloqueante
+        esp_task_wdt_reset(); // ← mantém watchdog feliz em idle
         if (brightness > 0 && millis() - lastStep > stepInterval) {
             lastStep = millis();
             brightness--;
@@ -203,6 +206,7 @@ void ButtonIdle()
 
         if (brightness == 0) {
             menu = -2;
+            esp_task_wdt_reset(); // ← antes de operações Firebase
             sendSensorActuatorData();
         }
     }
@@ -254,6 +258,7 @@ void receiveFirebaseData()
 
     for(int i = 0; i < paths_size; i++)
     {
+        esp_task_wdt_reset();
         String fullPath = paths[i].needsPrefix ? 
                           safeEmail + paths[i].path : 
                           String(paths[i].path);
@@ -360,7 +365,6 @@ void initFirebaseStructure()
     
     Serial.printf("[Firebase] Status retornado: '%s'\n", status.c_str());
     
-    // estrutura já existe, não faz nada
     if (status == "true" || status == "false")
     {
         display->logoScreen("Dados existentes carregados!");
@@ -368,34 +372,41 @@ void initFirebaseStructure()
         return;
     }
 
-    // permission denied = nó não existe ainda = primeiro acesso
-    // qualquer outro erro também tenta criar
     display->logoScreen("Primeiro acesso, criando estrutura...");
+    esp_task_wdt_reset();
 
+    // Status e email
     bool running = false;
     firebase->aSyncSetBool(safeEmail + "/Status", running);
     
     String emailStr = wifi.getEmail();
     firebase->aSyncSetString(safeEmail + "/email", emailStr);
 
+    // Versão
     String ver = ota.getVersion();
     firebase->aSyncSetString(safeEmail + "/Version", ver);
     
+    // Luz
     String hourOn = "08:00";
     String hourOff = "22:00";
     firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hourOn);
     firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hourOff);
+    esp_task_wdt_reset();
     
+    // Temperatura
     float targetTemp = data_class.getTargetTemp();
     float tempTol = data_class.getTempTolerance();
     firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp", targetTemp);
     firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", tempTol);
     
+    // Umidade
     float targetHumid = data_class.getTargetHumid();
     float humidTol = data_class.getHumidTolerance();
     firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid", targetHumid);
     firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance", humidTol);
+    esp_task_wdt_reset();
     
+    // Solo
     float targetSoil = data_class.getTargetSoil();
     float soilTol = data_class.getSoilTolerance();
     float pumpDur = data_class.getPumpDuration();
@@ -404,16 +415,44 @@ void initFirebaseStructure()
     firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance", soilTol);
     firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", pumpDur);
     firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", absDelay);
+    esp_task_wdt_reset();
+
+    // Calibração solo — faltava
+    float soilDry = data_class.getSoilLow();
+    float soilWet = data_class.getSoilUpper();
+    float pumpFlow = data_class.getPumpFlow();
+    float behavior = data_class.getSoilBehavior();
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/SoilSensor/Dry", soilDry);
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/SoilSensor/Wet", soilWet);
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow", pumpFlow);
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Behavior", behavior);
+    esp_task_wdt_reset();
+
+    // Reservatório — faltava
+    float reserv = data_class.getWaterRawReading();
+    float capacity = data_class.getWaterCapacity();
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/WaterReserv/Calibration/Reserv", reserv);
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/WaterReserv/Calibration/Capacity", capacity);
 
     display->logoScreen("Estrutura criada com sucesso!");
     delay(1000);
+}
+
+void wdt_conf()
+{
+ // Desabilita watchdog da task idle
+    esp_task_wdt_deinit();
+    
+    // Reinicializa com timeout de 30 segundos
+    esp_task_wdt_init(30, false); // 30s, não entra em panic
+    esp_task_wdt_add(NULL);       // adiciona a task atual
 }
 
 
 
 void setup() 
 {
-    //nvs_flash_erase();
+    wdt_conf();
     initClasses();
     initModules();
     display->logoScreen("Inicializando sistemas de armazenamento...");
