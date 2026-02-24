@@ -1,7 +1,7 @@
 #include "Display.hpp"
 
 Display::Display(TFT_eSPI *tft, FBase *fbase, Time *time, OTA *ota, WifiManager *wifi_manager, Button **button, DataClass *data_class) :
-                    display(tft), firebase(fbase), rtc(time), ota(ota), wifi(wifi_manager), btn(button), dataClass(data_class), _boxSprite(display) 
+                    display(tft), firebase(fbase), rtc(time), ota(ota), wifi(wifi_manager), btn(button), dataClass(data_class) 
                     {
                         for (int i = 0; i < 2; i++)
                         {
@@ -48,6 +48,7 @@ void Display::logoScreen(String text)
     display->fillScreen(BG_ICON);
     
     //display->pushImage(141, 35, 197, 248, logoIcon);
+    
     display->setTextColor(WHITE, BG_ICON);
     display->setTextDatum(MC_DATUM);
     display->drawString(text, 240, 300, 2);
@@ -1982,3 +1983,4 @@ void Display::waitBox()
     display->fillRoundRect(190, 160, 100, 60, 3, DARK_GREY);
     display->drawString("Aguarde...",240, 160, 2);
 }
+
