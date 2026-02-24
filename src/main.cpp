@@ -180,49 +180,6 @@ void sendSensorActuatorData()
     }
 }
 
-void ButtonIdle()
-{
-    static int brightness = 255;
-    static unsigned long lastStep = 0;
-    const unsigned long stepInterval = 1; // ms entre cada passo ~2 segundos total
-
-    esp_task_wdt_reset(); // ← sempre reseta em cada chamada
-
-    bool idle = button[0]->getIdle() && button[1]->getIdle() && 
-                button[2]->getIdle() && button[3]->getIdle();
-
-    if (idle)
-    {
-        esp_task_wdt_reset(); // ← mantém watchdog feliz em idle
-        if (brightness > 0 && millis() - lastStep > stepInterval) {
-            lastStep = millis();
-            brightness--;
-            ledcWrite(0, brightness);
-        }
-
-        for (int i = 0; i < 4; i++) {
-            if (button[i]->read()) break;
-        }
-
-        if (brightness == 0) {
-            menu = -2;
-            esp_task_wdt_reset(); // ← antes de operações Firebase
-            sendSensorActuatorData();
-        }
-    }
-    else
-    {
-        // fade up não bloqueante
-        if (brightness < 255 && millis() - lastStep > stepInterval) {
-            lastStep = millis();
-            brightness++;
-            ledcWrite(0, brightness);
-            //menu = -2;
-        }
-    }
-}
-
-
 void receiveFirebaseData()
 {
     struct PathData {
@@ -357,6 +314,52 @@ void receiveFirebaseData()
         }
     }
 }
+
+void ButtonIdle()
+{
+    static int brightness = 255;
+    static unsigned long lastStep = 0;
+    const unsigned long stepInterval = 1; // ms entre cada passo ~2 segundos total
+
+    esp_task_wdt_reset(); // ← sempre reseta em cada chamada
+
+    bool idle = button[0]->getIdle() && button[1]->getIdle() && 
+                button[2]->getIdle() && button[3]->getIdle();
+
+    if (idle)
+    {
+        esp_task_wdt_reset(); // ← mantém watchdog feliz em idle
+        if (brightness > 0 && millis() - lastStep > stepInterval) {
+            lastStep = millis();
+            brightness--;
+            ledcWrite(0, brightness);
+        }
+
+        for (int i = 0; i < 4; i++) {
+            if (button[i]->read()) break;
+        }
+
+        if (brightness == 0) {
+            menu = -2;
+            esp_task_wdt_reset(); // ← antes de operações Firebase
+            sendSensorActuatorData();
+            receiveFirebaseData();
+        }
+    }
+    else
+    {
+        // fade up não bloqueante
+        if (brightness < 255 && millis() - lastStep > stepInterval) {
+            lastStep = millis();
+            brightness++;
+            ledcWrite(0, brightness);
+            //menu = -2;
+        }
+    }
+}
+
+
+
 
 void initFirebaseStructure()
 {
