@@ -48,6 +48,8 @@ DataClass::DataClass(Light *light, Preferences *preferences) : prefs(preferences
 
     this->light = light;
 
+    hasChange = "false";
+
 }
 
 
@@ -299,6 +301,9 @@ int DataClass::getSoilUpper()
 
 float DataClass::getCalibratedSoil()
 {
+    if (soil_low_raw == NOT_DEFINED || soil_upper_raw == NOT_DEFINED || soil_low_raw == soil_upper_raw)
+        return 0.0f;
+
     float mapped_soil = map(getSoil(), getSoilLow(), getSoilUpper(), 0, 100);
     
     if(mapped_soil < 0)
@@ -358,9 +363,25 @@ float DataClass::getWaterRawReading()
 
 float DataClass::getWaterCalibrated()
 {
-    float mapped_value = map(getWaterRes(),60, getWaterRawReading(), 100, 0);
-    mapped_value = constrain(mapped_value, 0, 100);
-    return mapped_value;
+    float raw = getWaterRes();
+    float min = 60.0f;
+    float max = getWaterRawReading();   // idealmente isso deveria ser fixo/calibrado
+
+    if (max <= min)
+        return 0.0f; // proteção contra divisão por zero
+
+    float percent = (raw - min) * 100.0f / (max - min);
+
+    // inverter escala (100 → 0)
+    percent = 100.0f - percent;
+
+    // limitar
+    if (percent < 0.0f)
+        percent = 0.0f;
+    if (percent > 100.0f)
+        percent = 100.0f;
+
+    return percent;
 }
 
 float DataClass::getReservWarning()
@@ -415,4 +436,11 @@ bool DataClass::getIsRunning()
     return isRunning;
 }
 
-
+void DataClass::setHasChange(String new_status)
+{
+    hasChange = new_status;
+}
+String DataClass::getHasChange()
+{
+    return hasChange;
+}
