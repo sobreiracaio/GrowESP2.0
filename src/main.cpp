@@ -110,15 +110,19 @@ void formatDate(String *date, int period) {
 }
 
 
-void sendSensorActuatorData()
+void sendAndReceiveData()
 {
     if (!data_class.getIsRunning()) return;
-    
-    static String version = "";
+    if (!firebase || !firebase->isReady()) return;  // ← guard contra NULL
+
     static unsigned long lastSend = 0;
     if (millis() - lastSend < 30000) return;
     lastSend = millis();
 
+    if(!wifi.getStatus())
+        return;
+
+    // ========== SEND ==========
     static float last_sensors[4] = {0, 0, 0, 0};
     static bool last_actuators[6] = {false, false, false, false, false, false};
 
@@ -154,7 +158,7 @@ void sendSensorActuatorData()
         data_class.getDehumidStatus()
     };
 
-    for (int i = 0; i < sizeof(sensors) / sizeof(sensors[0]); i++)
+    for (int i = 0; i < 4; i++)
     {
         if (sensors[i] != last_sensors[i])
         {
@@ -163,7 +167,7 @@ void sendSensorActuatorData()
         }
     }
 
-    for (int j = 0; j < sizeof(actuators) / sizeof(actuators[0]); j++)
+    for (int j = 0; j < 6; j++)
     {
         if (actuators[j] != last_actuators[j])
         {
@@ -171,13 +175,87 @@ void sendSensorActuatorData()
             last_actuators[j] = actuators[j];
         }
     }
-    
-    if(ota.getVersion() != version)
+
+    static String version = "";
+    if (ota.getVersion() != version)
     {
-        firebase->aSyncGet(safeEmail + "/Version", version);
+        firebase->awaitGet(safeEmail + "/Version", &version);
         ota.setVersion(version);
         version = ota.getVersion();
     }
+
+    // ========== RECEIVE (só se HasChange == true) ==========
+    String hasChange = data_class.getHasChange();
+    firebase->awaitGet(safeEmail + "/HasChange", &hasChange);  // ← awaitGet, não aSyncGet
+    data_class.setHasChange(hasChange);
+    if (data_class.getHasChange() != "true" || wifi.getStatus() == false) return;
+
+    struct PathData {
+        const char* path;
+        bool needsPrefix;
+    };
+
+    PathData paths[] = {
+        {"/_Binary", false},
+        {"/_Token", false},
+        {"/_HasUpdate", false},
+        {"/InsertedData/Light/HourOn", true},
+        {"/InsertedData/Light/HourOff", true},
+        {"/InsertedData/Sensor/Temperature/TargetTemp", true},
+        {"/InsertedData/Sensor/Temperature/TempTolerance", true},
+        {"/InsertedData/Sensor/Humid/TargetHumid", true},
+        {"/InsertedData/Sensor/Humid/HumidTolerance", true},
+        {"/InsertedData/Sensor/Soil/TargetSoil", true},
+        {"/InsertedData/Sensor/Soil/PumpDuration", true},
+        {"/InsertedData/Sensor/Soil/AbsorptionDelay", true},
+        {"/InsertedData/Sensor/Soil/SoilTolerance", true},
+        {"/InsertedData/Sensor/Soil/Calibration/SoilSensor/Dry", true},
+        {"/InsertedData/Sensor/Soil/Calibration/SoilSensor/Wet", true},
+        {"/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow", true},
+        {"/InsertedData/Sensor/Soil/Calibration/Behavior", true},
+        {"/InsertedData/Sensor/WaterReserv/Calibration/Reserv", true},
+        {"/InsertedData/Sensor/WaterReserv/Calibration/Capacity", true},
+        {"/Version", true},
+        {"/Status", true}
+    };
+
+    int paths_size = sizeof(paths) / sizeof(paths[0]);
+
+    for (int i = 0; i < paths_size; i++)
+    {
+        esp_task_wdt_reset();
+        String fullPath = paths[i].needsPrefix ? safeEmail + paths[i].path : String(paths[i].path);
+        String data = "";
+        firebase->awaitGet(fullPath, &data);  // ← awaitGet para garantir o valor
+
+        switch (i)
+        {
+            case 0:  ota.setBinaryPath(data); break;
+            case 1:  ota.setToken(data); break;
+            case 2:  ota.setHasUpdate(data == "true"); break;
+            case 3:  formatDate(&data, DAY);  data_class.getDayTime(display->day); break;
+            case 4:  formatDate(&data, NIGHT); data_class.getNightTime(display->night); break;
+            case 5:  data_class.setTargetTemp(data.toFloat()); break;
+            case 6:  data_class.setTempTolerance(data.toFloat()); break;
+            case 7:  data_class.setTargetHumid(data.toFloat()); break;
+            case 8:  data_class.setHumidTolerance(data.toFloat()); break;
+            case 9:  data_class.setTargetSoil(data.toFloat()); break;
+            case 10: data_class.setPumpDuration(data.toFloat()); break;
+            case 11: data_class.setAbsorptionDelay(data.toFloat()); break;
+            case 12: data_class.setSoilTolerance(data.toFloat()); break;
+            case 13: data_class.setSoilLow(data.toInt()); break;
+            case 14: data_class.setSoilUpper(data.toInt()); break;
+            case 15: data_class.setPumpFlow(data.toFloat()); break;
+            case 16: data_class.setSoilBehavior(data.toFloat()); break;
+            case 17: data_class.setWaterRawReading(data.toFloat()); break;
+            case 18: data_class.setWaterCapacity(data.toFloat()); break;
+            case 19: ota.setVersion(data); break;
+            case 20: data_class.setIsRunning(data == "true"); break;
+        }
+    }
+
+    String temp = "false";
+    firebase->aSyncSetString(safeEmail + "/HasChange", temp);
 }
 
 void receiveFirebaseData()
@@ -342,8 +420,8 @@ void ButtonIdle()
         if (brightness == 0) {
             menu = -2;
             esp_task_wdt_reset(); // ← antes de operações Firebase
-            sendSensorActuatorData();
-            receiveFirebaseData();
+            sendAndReceiveData();
+            
         }
     }
     else
@@ -363,6 +441,8 @@ void ButtonIdle()
 
 void initFirebaseStructure()
 {
+    if(wifi.getStatus() == false)
+        return;
     String status = "";
     firebase->awaitGet(safeEmail + "/Status", &status);
     
@@ -550,17 +630,7 @@ void loop()
         last_menu = menu;
     }
 
-    // static bool wasIdle = false;
-    // bool isIdle = button[0]->getIdle() && button[1]->getIdle() && 
-    //             button[2]->getIdle() && button[3]->getIdle();
-
-    // // detecta transição idle -> ativo
-    // if (wasIdle && !isIdle)
-    //     last_menu = -2; // força redraw no próximo ciclo
-
-    // wasIdle = isIdle;
-
-        
+           
     switch (menu)
     {
         case -1:

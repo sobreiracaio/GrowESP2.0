@@ -72,6 +72,8 @@ class DataClass {
         bool dehumidStatus;
         
         Light *light;
+
+        String hasChange;
         
         public:
         
@@ -97,7 +99,7 @@ class DataClass {
         
         void setDayTime(int h, int m);
         void setNightTime(int h, int m);
-        void setLightBehavior(int type);
+        
         
         void setWaterRes(float value);
         
@@ -150,6 +152,9 @@ class DataClass {
         void setIsRunning(bool stats);
         bool getIsRunning();
         
+
+        void setHasChange(String new_status);
+        String getHasChange();
             
         
         
