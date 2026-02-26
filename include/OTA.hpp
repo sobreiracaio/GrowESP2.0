@@ -13,11 +13,15 @@ class OTA {
     private:
         String binaryUrl;
         String token;
+        String version;
+        String releaseTag = "";
+        String releaseName = "";
+        String releaseBody = "";
+        String releaseDate = "";
 
         volatile size_t totalSize;    // tamanho total do firmware
         volatile size_t currentSize;  // quanto já foi gravado
         
-        String version;
         bool hasUpdate;
         bool isUpdated;
 
@@ -25,10 +29,6 @@ class OTA {
         FBase *firebase;
         Display *display;
 
-        String releaseTag = "";
-        String releaseName = "";
-        String releaseBody = "";
-        String releaseDate = "";
     
 
     public:
