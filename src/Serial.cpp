@@ -8,9 +8,9 @@ void sendPacket(uint8_t id, float value)
     static unsigned long lastSendTime = 0;
     
     // ⭐ ESPERA no mínimo 50ms entre QUALQUER pacote
-    while(millis() - lastSendTime < 50) {
-        delay(1);
-    }
+    if(millis() - lastSendTime < 50)
+        return;
+    
     
     // Evita duplicados
     if(id == lastID && value == lastValue) 

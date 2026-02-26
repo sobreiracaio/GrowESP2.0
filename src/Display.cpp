@@ -162,21 +162,22 @@ void Display::drawAntenna()
 
 void Display::topScreen(String label)
 {
-    String hour = wifi->getStatus() && rtc->getHour() != -1 ? (rtc->getHour() < 10 ? "0" + String(rtc->getHour()) : String(rtc->getHour())) : "00";
-    String min = wifi->getStatus() && rtc->getMinute() != -1 ? (rtc->getMinute() < 10 ? "0" + String(rtc->getMinute()) : String(rtc->getMinute())) : "00";
+    char hour[3], minute[3];
+    int h = (wifi->getStatus() && rtc->getHour() != -1) ? rtc->getHour() : 0;
+    int m = (wifi->getStatus() && rtc->getMinute() != -1) ? rtc->getMinute() : 0;
+    snprintf(hour,   sizeof(hour),   "%02d", h);
+    snprintf(minute, sizeof(minute), "%02d", m);
+
+    char timeStr[6];
+    snprintf(timeStr, sizeof(timeStr), "%s:%s", hour, minute);
+
     display->setTextColor(WHITE, BLACK);
     display->setTextDatum(MC_DATUM);
     display->drawString(label, 240, 20, 4);
     display->setTextDatum(TL_DATUM);
-    const int height = display->fontHeight(2);
-    const int textPos = (40 - height) / 2;
-    const int sectionWidth = 440;
     wifiConnStatus();
     drawAntenna();
-    String time = wifi->getStatus() ? hour + ":" + min : "00:00";
-    //String time = String(rtc->getHour()) + ":" + (rtc->getMinute() < 10 ? "0" + String(rtc->getMinute()) : String(rtc->getMinute()));
-    const int timeX = 410; 
-    display->drawString(time, timeX, textPos, 4);
+    display->drawString(timeStr, 410, (40 - display->fontHeight(2)) / 2, 4);
 }
 
 uint16_t color565(uint8_t r, uint8_t g, uint8_t b) 
@@ -356,8 +357,8 @@ void Display::monitorMenu(int *menu)
     }
 
     int distance = 119;
-    String gauge_labels[4] = {"Temperatura", "Umidade", "Solo", "Reserv."};
-    String gauge_units[4] = {".C", "%", "%", "%"};
+    static const char* gauge_labels[4] = {"Temperatura", "Umidade", "Solo", "Reserv."};
+    static const char* gauge_units[4]  = {".C", "%", "%", "%"};
     float gauge_values[4] = {dataClass->getTemp(), dataClass->getHumid(), dataClass->getCalibratedSoil(), dataClass->getWaterCalibrated()};
     float gauge_Tvalues[4] = {dataClass->getTargetTemp(), dataClass->getTargetHumid(), dataClass->getTargetSoil() == 150 ? 0 : dataClass->getTargetSoil(), 0};
     float gauge_Cvalues[4] = {50, 100, 100, 100};
@@ -373,7 +374,7 @@ void Display::monitorMenu(int *menu)
     
     int distance_y = 30;
     int distance_x = 230;
-    String devices[2][3] = {{"Luz", "Bomba", "Cooler"}, {"Aquecedor", "Umid.", "Desumid."}};
+    static const String devices[2][3] = {{"Luz", "Bomba", "Cooler"}, {"Aquecedor", "Umid.", "Desumid."}};
     String status[2][3] = {{dataClass->getLightStatus() ? "ON  " : "OFF", dataClass->getPumpStatus() ? "ON  " : "OFF", dataClass->getCoolerStatus() ? "ON  " : "OFF"},
                            {dataClass->getHeaterStatus() ? "ON  " : "OFF", dataClass->getHumidStatus() ? "ON  " : "OFF", dataClass->getDehumidStatus() ? "ON  " : "OFF"}};
     String on_time[2][3] = {{"12:00", "12:01", "12:02"},{"12:03", "12:04", "12:05"}};
@@ -525,35 +526,39 @@ void Display::lightMenu(int *menu)
 
     if(btn[3]->read())
     {
-        String hour = "";
+        char hour[6];
 
         if(selection == 0)
         {
             dataClass->setDayTime(day[0], day[1]);
-            hour = (day[0] < 10 ? "0" + String(day[0]) : String(day[0])) + ":" + (day[1] < 10 ? "0" + String(day[1]) : String(day[1]));
-            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hour);
+            snprintf(hour, sizeof(hour), "%02d:%02d", day[0], day[1]);
+            String hourStr(hour);
+            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hourStr);
             
         }
 
         if(selection == 1)
         {
             dataClass->setDayTime(day[0], day[1]);
-            hour = (day[0] < 10 ? "0" + String(day[0]) : String(day[0])) + ":" + (day[1] < 10 ? "0" + String(day[1]) : String(day[1]));
-            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hour);
+            snprintf(hour, sizeof(hour), "%02d:%02d", day[0], day[1]);
+            String hourStr(hour);
+            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hourStr);
         }
 
         if(selection == 2)
         {
             dataClass->setNightTime(night[0], night[1]);
-            hour = (night[0] < 10 ? "0" + String(night[0]) : String(night[0])) + ":" + (night[1] < 10 ? "0" + String(night[1]) : String(night[1]));
-            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hour);
+            snprintf(hour, sizeof(hour), "%02d:%02d", night[0], night[1]);
+            String hourStr(hour);
+            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hourStr);
         }
 
         if(selection == 3)
         {
             dataClass->setNightTime(night[0], night[1]);
-            hour = (night[0] < 10 ? "0" + String(night[0]) : String(night[0])) + ":" + (night[1] < 10 ? "0" + String(night[1]) : String(night[1]));
-            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hour);
+            snprintf(hour, sizeof(hour), "%02d:%02d", night[0], night[1]);
+            String hourStr(hour);
+            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hourStr);
         }
             
         

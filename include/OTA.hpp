@@ -42,15 +42,16 @@ class OTA {
         void setHasUpdate(bool status);
 
         bool getHasUpdate();
-        String getVersion();
-
+        
         void injectFbase(FBase *firebase);
         void injectDisplay(Display *display);
         int updateDevice();
-
+        
         int fetchReleaseInfo();
-        String getReleaseTag();  
-        String getReleaseName();
-        String getReleaseBody();
+        const String& getVersion();
+        const String& getReleaseTag();
+        const String& getReleaseName();
+        const String& getReleaseBody();
+
         String getReleaseDate();
 };
