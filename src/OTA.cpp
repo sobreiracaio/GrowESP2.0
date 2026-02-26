@@ -58,12 +58,6 @@ void OTA::setVersion(String new_version)
     version = new_version;
 }
 
-String OTA::getVersion()
-{
-    
-    return version;
-}
-
 void OTA::setHasUpdate(bool status)
 {
     hasUpdate = status;
@@ -356,20 +350,20 @@ int OTA::fetchReleaseInfo()
     return 0;
 }
 
-String OTA::getReleaseTag()  { return releaseTag; }
-
-String OTA::getReleaseName() { return releaseName; }
-
-String OTA::getReleaseBody() { return releaseBody; }
+const String& OTA::getVersion()     { return version; }
+const String& OTA::getReleaseTag()  { return releaseTag; }
+const String& OTA::getReleaseName() { return releaseName; }
+const String& OTA::getReleaseBody() { return releaseBody; }
 
 String OTA::getReleaseDate()
 {
     if (releaseDate.length() < 16) return releaseDate;
-
-    String day   = releaseDate.substring(8, 10);
-    String month = releaseDate.substring(5, 7);
-    String year  = releaseDate.substring(0, 4);
-    String hour  = releaseDate.substring(11, 16);
-
-    return day + "/" + month + "/" + year + " " + hour;
+    char buf[18];
+    snprintf(buf, sizeof(buf), "%c%c/%c%c/%c%c%c%c %c%c:%c%c",
+        releaseDate[8],  releaseDate[9],   // dia
+        releaseDate[5],  releaseDate[6],   // mes
+        releaseDate[0],  releaseDate[1],   releaseDate[2],  releaseDate[3], // ano
+        releaseDate[11], releaseDate[12],  // hora
+        releaseDate[14], releaseDate[15]); // minuto
+    return String(buf);
 }

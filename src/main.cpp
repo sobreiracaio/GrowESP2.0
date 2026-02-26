@@ -31,7 +31,6 @@ OTA ota(&prefs, firebase, display);
 
 struct tm now = {0};
 String safeEmail = "";
-
 int menu = -1;
 
 
@@ -112,6 +111,7 @@ void formatDate(String *date, int period) {
 
 void sendAndReceiveData()
 {
+    char pathBuf[128];
     if (!data_class.getIsRunning()) return;
     if (!firebase || !firebase->isReady()) return;  // ← guard contra NULL
 
@@ -224,9 +224,17 @@ void sendAndReceiveData()
     for (int i = 0; i < paths_size; i++)
     {
         esp_task_wdt_reset();
-        String fullPath = paths[i].needsPrefix ? safeEmail + paths[i].path : String(paths[i].path);
-        String data = "";
-        firebase->awaitGet(fullPath, &data);  // ← awaitGet para garantir o valor
+        if (paths[i].needsPrefix)
+            snprintf(pathBuf, sizeof(pathBuf), "%s%s", safeEmail.c_str(), paths[i].path);
+        else
+            snprintf(pathBuf, sizeof(pathBuf), "%s", paths[i].path);
+        
+        // pathBuf agora tem o path completo, sem criar String temporária
+        String fullPath(pathBuf); // só UMA alocação aqui
+        
+        String data;
+        data.reserve(64);
+        firebase->awaitGet(fullPath, &data);
 
         switch (i)
         {
