@@ -58,6 +58,8 @@ void OTA::setVersion(String new_version)
     version = new_version;
 }
 
+
+
 void OTA::setHasUpdate(bool status)
 {
     hasUpdate = status;
