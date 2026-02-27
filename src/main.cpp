@@ -441,7 +441,7 @@ void ButtonIdle()
             menu = -2;
             esp_task_wdt_reset(); // ← antes de operações Firebase
             sendAndReceiveData();
-            
+            wifi.loop();
         }
     }
     else
@@ -691,7 +691,7 @@ void loop()
     
     ButtonIdle();
         
-    wifi.loop();       
+           
     unsigned long serialStart = millis();
     while(Serial2.available() >= 5 && millis() - serialStart < 50) {
         readPacket(&data_class);

@@ -74,7 +74,7 @@ bool OTA::getHasUpdate()
 int OTA::updateDevice()
 {
     if (!firebase || !firebase->stopApp()) {
-        return -1; // sem reinit pois firebase nunca parou
+        return -1;
     }
 
     display->logoScreen("Atualizando, aguarde!");
@@ -148,9 +148,9 @@ int OTA::updateDevice()
     }
 
     idPos += 5;
-    int idEnd = payload.indexOf(",", idPos);
-    String assetId = payload.substring(idPos, idEnd);
+    String assetId = payload.substring(idPos, payload.indexOf(",", idPos));
     assetId.trim();
+    payload = ""; // libera heap antes do download
 
     String assetUrl = "https://api.github.com/repos/sobreiracaio/GrowESP2.0/releases/assets/" + assetId;
 
@@ -177,7 +177,7 @@ int OTA::updateDevice()
         return -1;
     }
 
-    totalSize = https2.getSize();
+    totalSize   = https2.getSize();
     currentSize = 0;
 
     if (totalSize <= 0)
@@ -194,11 +194,12 @@ int OTA::updateDevice()
         return -1;
     }
 
-    WiFiClient *stream = https2.getStreamPtr();
-    uint8_t buffer[1024];
+    WiFiClient* stream = https2.getStreamPtr();
+    uint8_t     buffer[1024];
 
     while (https2.connected() && currentSize < totalSize)
     {
+        esp_task_wdt_reset();
         size_t available = stream->available();
         if (available)
         {
@@ -206,7 +207,6 @@ int OTA::updateDevice()
                 buffer,
                 (available > sizeof(buffer)) ? sizeof(buffer) : available
             );
-
             if (bytesRead > 0)
             {
                 if (Update.write(buffer, bytesRead) != bytesRead)
@@ -229,50 +229,20 @@ int OTA::updateDevice()
         return -1;
     }
 
+    // Grava versão no Preferences — sem Firebase, sem SSL, sem competição de heap
     if (releaseTag.length() > 0)
-        setVersion(releaseTag);
-
-    if (releaseTag.length() > 0)
-    setVersion(releaseTag);
-
-    if (firebase->init()) 
     {
-        unsigned long timeout = millis();
-        while (!firebase->isHealthy() && millis() - timeout < 15000) {
-            esp_task_wdt_reset();
-            firebase->loop();
-            delay(50);
-        }
-
-        if (firebase->isHealthy()) 
-        {
-            delay(1000); // estabiliza conexão
-            
-            // tenta confirmar escrita antes de reiniciar
-            String check = "";
-            unsigned long writeTimeout = millis();
-            
-            while (check != releaseTag && millis() - writeTimeout < 20000) 
-            {
-                esp_task_wdt_reset();
-                firebase->awaitSet(safeEmail + "/Version", releaseTag, STRING);
-                delay(300);
-                firebase->awaitGet(safeEmail + "/Version", &check);
-                Serial.printf("[OTA] Version no banco: '%s' esperado: '%s'\n", check.c_str(), releaseTag.c_str());
-                delay(300);
-            }
-
-            if (check == releaseTag)
-                Serial.println("[OTA] Versao confirmada no banco!");
-            else
-                Serial.println("[OTA] Timeout ao confirmar versao, reiniciando mesmo assim");
-        }
+        setVersion(releaseTag);
+        prefs->begin("ota", false);
+        prefs->putString("version", releaseTag.c_str());
+        prefs->end();
+        Serial.printf("[OTA] Versao %s salva em Preferences\n", releaseTag.c_str());
     }
 
-display->logoScreen("Sistema Atualizado com Sucesso! Reiniciando!");
-delay(500);
-ESP.restart();
-return 0;
+    display->logoScreen("Sistema Atualizado com Sucesso! Reiniciando!");
+    delay(500);
+    ESP.restart();
+    return 0;
 }
 
 int OTA::fetchReleaseInfo()
