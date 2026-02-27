@@ -691,7 +691,7 @@ void loop()
     
     ButtonIdle();
         
-           
+    wifi.loop();       
     unsigned long serialStart = millis();
     while(Serial2.available() >= 5 && millis() - serialStart < 50) {
         readPacket(&data_class);
