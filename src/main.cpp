@@ -464,8 +464,9 @@ void initFirebaseStructure()
     if(wifi.getStatus() == false)
         return;
     String status = "";
+    String version = ota.getVersion();
     firebase->awaitGet(safeEmail + "/Status", &status);
-    
+    firebase->aSyncSetString(safeEmail + "/Version", version);
     Serial.printf("[Firebase] Status retornado: '%s'\n", status.c_str());
     
     if (status == "true" || status == "false")
@@ -678,7 +679,8 @@ void setup()
 
     sendDataStartUP();
     
-    delay(500);
+    display->logoScreen("Versao: " + ota.getVersion());
+    delay(1000);
     ota.fetchReleaseInfo();
     
   

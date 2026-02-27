@@ -55,7 +55,9 @@ void OTA::setToken(String token)
 
 void OTA::setVersion(String new_version)
 {
-    version = new_version;
+    prefs->begin("ota", false);
+    prefs->putString("version", new_version);
+    prefs->end();
 }
 
 
@@ -233,9 +235,6 @@ int OTA::updateDevice()
     if (releaseTag.length() > 0)
     {
         setVersion(releaseTag);
-        prefs->begin("ota", false);
-        prefs->putString("version", releaseTag.c_str());
-        prefs->end();
         Serial.printf("[OTA] Versao %s salva em Preferences\n", releaseTag.c_str());
     }
 
@@ -322,7 +321,13 @@ int OTA::fetchReleaseInfo()
     return 0;
 }
 
-const String& OTA::getVersion()     { return version; }
+const String& OTA::getVersion()
+{
+    prefs->begin("ota", true);
+    version = prefs->getString("version", version);
+    prefs->end();
+    return version; 
+}
 const String& OTA::getReleaseTag()  { return releaseTag; }
 const String& OTA::getReleaseName() { return releaseName; }
 const String& OTA::getReleaseBody() { return releaseBody; }
