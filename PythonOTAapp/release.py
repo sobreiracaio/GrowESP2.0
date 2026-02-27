@@ -20,7 +20,7 @@ class ESP32ReleaseManager:
         self.root = root
         self.root.title("🚀 ESP32 Release Manager")
         self.root.geometry("1150x800")
-        self.root.minsize(950, 650)
+        self.root.minsize(950, 500)
         self.root.resizable(True, True)
 
         self.config_file = "release_config.json"
@@ -78,11 +78,53 @@ class ESP32ReleaseManager:
         main.rowconfigure(0, weight=1)
 
         # ══════════════════════════════════════════
-        # COLUNA ESQUERDA
+        # COLUNA ESQUERDA — Canvas + Scrollbar
         # ══════════════════════════════════════════
-        left = ttk.Frame(main)
-        left.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+        left_outer = ttk.Frame(main)
+        left_outer.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+        left_outer.columnconfigure(0, weight=1)
+        left_outer.rowconfigure(0, weight=1)
+
+        left_canvas = tk.Canvas(left_outer, borderwidth=0, highlightthickness=0)
+        left_canvas.grid(row=0, column=0, sticky="nsew")
+
+        left_vsb = ttk.Scrollbar(left_outer, orient="vertical",
+                                  command=left_canvas.yview)
+        left_vsb.grid(row=0, column=1, sticky="ns")
+        left_canvas.configure(yscrollcommand=left_vsb.set)
+
+        # Frame interno que vai dentro do canvas
+        left = ttk.Frame(left_canvas)
         left.columnconfigure(0, weight=1)
+
+        left_window = left_canvas.create_window((0, 0), window=left, anchor="nw")
+
+        # Ajusta o canvas quando o frame interno muda de tamanho
+        def _on_left_configure(event):
+            left_canvas.configure(scrollregion=left_canvas.bbox("all"))
+
+        def _on_canvas_resize(event):
+            left_canvas.itemconfig(left_window, width=event.width)
+
+        left.bind("<Configure>", _on_left_configure)
+        left_canvas.bind("<Configure>", _on_canvas_resize)
+
+        # Scroll com roda do mouse na coluna esquerda
+        def _on_mousewheel(event):
+            left_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def _on_mousewheel_linux(event):
+            if event.num == 4:
+                left_canvas.yview_scroll(-1, "units")
+            elif event.num == 5:
+                left_canvas.yview_scroll(1, "units")
+
+        left_canvas.bind("<MouseWheel>", _on_mousewheel)          # Windows/Mac
+        left_canvas.bind("<Button-4>", _on_mousewheel_linux)      # Linux scroll up
+        left_canvas.bind("<Button-5>", _on_mousewheel_linux)      # Linux scroll down
+        left.bind("<MouseWheel>", _on_mousewheel)
+        left.bind("<Button-4>", _on_mousewheel_linux)
+        left.bind("<Button-5>", _on_mousewheel_linux)
 
         # ── GitHub config ──
         cfg = ttk.LabelFrame(left, text="⚙️  Configurações do GitHub", padding=8)
@@ -151,7 +193,6 @@ class ESP32ReleaseManager:
         self.fb_dburl_entry.grid(row=3, column=1, sticky="ew", pady=2, padx=5)
         self.fb_dburl_entry.insert(0, self.saved_fb_db_url)
 
-        # Campo _Binary com botões carregar/enviar
         ttk.Label(fb, text="_Binary URL:").grid(row=4, column=0, sticky="w", pady=2)
         binary_frame = ttk.Frame(fb)
         binary_frame.grid(row=4, column=1, sticky="ew", pady=2, padx=5)
@@ -212,8 +253,7 @@ class ESP32ReleaseManager:
 
         # ── Descrição ──
         desc = ttk.LabelFrame(left, text="📝 Descrição da Release", padding=8)
-        desc.grid(row=4, column=0, sticky="nsew", pady=(0, 4))
-        left.rowconfigure(4, weight=1)
+        desc.grid(row=4, column=0, sticky="ew", pady=(0, 4))
 
         self.desc_text = scrolledtext.ScrolledText(desc, height=4, wrap=tk.WORD)
         self.desc_text.pack(fill="both", expand=True)
@@ -225,7 +265,7 @@ class ESP32ReleaseManager:
         self.create_button.grid(row=5, column=0, sticky="ew", ipady=8, pady=(0, 4))
 
         self.progress = ttk.Progressbar(left, mode="indeterminate")
-        self.progress.grid(row=6, column=0, sticky="ew")
+        self.progress.grid(row=6, column=0, sticky="ew", pady=(0, 4))
 
         # ══════════════════════════════════════════
         # COLUNA DIREITA
@@ -271,7 +311,6 @@ class ESP32ReleaseManager:
         self.releases_tree.heading("data",      text="Criada em")
         self.releases_tree.heading("descricao", text="Descrição")
 
-        # Tag/Nome/Data fixos e apertados; Descrição expande
         self.releases_tree.column("tag",       width=80,  minwidth=80,  stretch=False, anchor="w")
         self.releases_tree.column("nome",      width=120, minwidth=120, stretch=False, anchor="w")
         self.releases_tree.column("data",      width=130, minwidth=130, stretch=False, anchor="center")
@@ -344,7 +383,6 @@ class ESP32ReleaseManager:
     # FIREBASE
     # ─────────────────────────────────────────────
     def _firebase_token(self):
-        """Autentica no Firebase e retorna o idToken."""
         api_key  = self.fb_apikey_entry.get().strip()
         email    = self.fb_email_entry.get().strip()
         password = self.fb_password_entry.get().strip()
@@ -367,7 +405,6 @@ class ESP32ReleaseManager:
         return url
 
     def firebase_load_binary(self):
-        """Carrega /_Binary do Realtime Database."""
         threading.Thread(target=self._do_firebase_load, daemon=True).start()
 
     def _do_firebase_load(self):
@@ -396,7 +433,6 @@ class ESP32ReleaseManager:
             self.root.after(0, lambda: messagebox.showerror("Firebase", str(e)))
 
     def firebase_save_binary(self):
-        """Salva o valor do campo _Binary de volta no Realtime Database."""
         valor = self.fb_binary_var.get().strip()
         if not valor:
             messagebox.showwarning("Aviso", "O campo _Binary URL está vazio!")
@@ -591,6 +627,37 @@ class ESP32ReleaseManager:
     # ─────────────────────────────────────────────
     # BUILD FIRMWARE
     # ─────────────────────────────────────────────
+    def _find_pio(self):
+        """
+        Busca o executável do PlatformIO em ordem de prioridade:
+        1. .venv dentro da pasta do projeto selecionada
+        2. ~/.platformio/penv/bin/pio  (instalação padrão do PlatformIO)
+        3. ~/.local/bin/pio
+        4. 'pio' no PATH do sistema
+        """
+        project_dir = self.project_dir.get().strip()
+
+        candidatos = []
+
+        # 1. venv do próprio projeto
+        if project_dir:
+            candidatos.append(Path(project_dir) / ".venv" / "bin" / "pio")
+
+        # 2. instalação padrão do PlatformIO IDE
+        candidatos.append(Path.home() / ".platformio" / "penv" / "bin" / "pio")
+
+        # 3. instalação via pip --user
+        candidatos.append(Path.home() / ".local" / "bin" / "pio")
+
+        for c in candidatos:
+            if c.exists():
+                self.log(f"pio encontrado em: {c}", "INFO")
+                return str(c)
+
+        # 4. PATH do sistema
+        self.log("pio não encontrado em caminhos conhecidos, tentando PATH...", "WARNING")
+        return "pio"
+
     def build_firmware(self):
         try:
             project_dir = self.project_dir.get().strip()
@@ -603,24 +670,31 @@ class ESP32ReleaseManager:
             if not (Path(project_dir) / "platformio.ini").exists():
                 self.log("platformio.ini não encontrado!", "ERROR")
                 return None
-            env = self.env_entry.get()
+
+            env     = self.env_entry.get()
+            pio_bin = self._find_pio()
+
             self.log("Compilando firmware...", "BUILD")
             result = subprocess.run(
-                ["pio", "run", "--environment", env, "--project-dir", project_dir],
+                [pio_bin, "run", "--environment", env, "--project-dir", project_dir],
                 capture_output=True, text=True, cwd=project_dir)
+
             if result.returncode != 0:
                 self.log("ERRO NA COMPILAÇÃO:", "ERROR")
                 for line in result.stderr.split('\n'):
                     if line.strip():
                         self.log(line, "ERROR")
                 return None
+
             firmware_path = Path(project_dir) / ".pio" / "build" / env / "firmware.bin"
             if not firmware_path.exists():
                 self.log(f"Firmware não encontrado em: {firmware_path}", "ERROR")
                 return None
+
             size = firmware_path.stat().st_size
             self.log(f"Compilação OK — {size / 1024:.2f} KB", "SUCCESS")
             return str(firmware_path)
+
         except FileNotFoundError:
             self.log("PlatformIO não encontrado! (pip install platformio)", "ERROR")
             return None

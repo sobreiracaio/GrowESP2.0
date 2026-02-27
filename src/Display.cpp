@@ -1174,9 +1174,9 @@ void Display::calibrationScreen(int *menu)
         topScreen("Menu Calibracao");
         botScreen(label);
         String labels[2][4] ={{"Sensor Solo", "Sensor Reserv.", "Bomba", "Rega"},{"Luz", "", "", ""}};
-        int colors[2][4] = {{GREEN, YELLOW, RED, BLUE},{ORANGE, DARK_GREY, DARK_GREY, DARK_GREY}};
-        const unsigned char *images[2][4] ={{soilIcon, waterReservIcon, pumpIcon, wateringIcon},{lightPeriodIcon, NULL, NULL, NULL}};
-        buttonScreen(labels, colors, images, &submenu, 4);
+        int colors[2][4] = {{GREEN, YELLOW, RED, BLUE},{DARK_GREY, DARK_GREY, DARK_GREY, DARK_GREY}};
+        const unsigned char *images[2][4] ={{soilIcon, waterReservIcon, pumpIcon, wateringIcon},{NULL, NULL, NULL, NULL}};
+        buttonScreen(labels, colors, images, &submenu, 3);
 
         break;
     }
@@ -1200,11 +1200,6 @@ void Display::calibrationScreen(int *menu)
         wateringCalibScreen(&submenu);        
         break;
 
-    case 4:
-        
-        lightCalibScreen(&submenu);
-        break;
-    
     default:
         break;
     }
@@ -1542,50 +1537,7 @@ void Display::wateringCalibScreen(int *menu)
     boxButton(290, 110, 150, 150, BLUE, NULL, selection == 1 ? true : false, dataClass->getSoilBehavior() == TIMER ? "OK" : "", "TIMER", 4);
 
 }
-void Display::lightCalibScreen(int *menu)
-{
-    static int selection = 0;
-    String label[4] = {"<", ">", "Selecionar", "Voltar"};
-    topScreen("Ajuste Luz");
-    botScreen(label);
 
-    if(btn[0]->read())
-        ;
-    if(btn[1]->read())
-        ;
-    if(btn[2]->read())
-    {
-       if(selection != 3)
-        selection++;
-        else
-        {
-            selection = 0;
-            *menu = -2;        
-        }
-    }
-    if(btn[3]->read())
-    {
-        if(selection != 0)
-        selection--;
-        else
-        {
-            selection = 0;
-            *menu = -2;
-        }
-    }
-
-    display->setTextColor(WHITE, DARK_GREY);
-    display->drawString("Escolha como sua luz sera ativada. Na opcao timer a luz e ativada", 20, 50, 2);
-    display->drawString("por um timer, ignorando o relogio. Na opcao relogio, o comportamento", 20, 67, 2);
-    display->drawString("da luz sera ditado pelo relogio do equipamento.", 20, 84, 2);
-   
-    boxButton(40, 110, 150, 100, ORANGE, NULL, false, "", "RELOGIO", 4);
-    boxButton(290, 110, 150, 100, BLUE, NULL, false, "", "TIMER", 4);
-
-    display->setTextColor(WHITE, DARK_GREY);
-    display->drawString("Na opcao timer ha uma ligeira perda de precisao com a medicao de", 20, 217, 2);
-    display->drawString("tempo na casa de segundos e ate minutos por dia.", 20, 234, 2);
-}
 
 void Display::setupScreen(int *menu)
 {
@@ -1846,15 +1798,36 @@ void Display::updateConfScreen(int *menu)
 
     boxButton(40, 50, 400, 100, GREEN, NULL, true, "Versao atual: " + ota->getVersion(), selection == 0 ? " VERIFICAR " : "ATUALIZAR", 4);
     display->setTextColor(WHITE, DARK_GREY);
-    if(ota->getVersion() != ota->getReleaseTag())
+    if (ota->getVersion() != ota->getReleaseTag())
+{
+    display->drawString("Notas da nova versao: " + ota->getReleaseTag() + " - " + ota->getReleaseDate(), 40, 160, 2);
+    display->drawString(ota->getReleaseName(), 40, 175, 2);
+
+    String body  = ota->getReleaseBody();
+    int    line  = 0;
+    int    start = 0;
+    int    sep   = body.indexOf(';');
+
+    while (sep != -1 && line < 5)
     {
-        display->drawString("Notas da nova versao: " + ota->getReleaseTag() + " - " + ota->getReleaseDate(), 40, 160, 2);
-        String notes[2] = {ota->getReleaseName(), ota->getReleaseBody()};
-        for(int i = 0; i < 2; i++)
-            display->drawString(notes[i], 40, 175 +(15 * i), 2);
+        String part = body.substring(start, sep + 1);
+        part.trim();
+        if (part.length() > 0)
+            display->drawString(part, 40, 190 + (15 * line++), 2);
+        start = sep + 1;
+        sep   = body.indexOf(';', start);
     }
-    else 
-        display->drawString("Nao ha novas atualizacoes no momento.", 40, 160, 2);
+
+    if (line < 5)
+    {
+        String last = body.substring(start);
+        last.trim();
+        if (last.length() > 0)
+            display->drawString(last, 40, 190 + (15 * line), 2);
+    }
+}
+else
+    display->drawString("Nao ha novas atualizacoes no momento.", 40, 160, 2);
 }
 
 void Display::aboutConfScreen(int *menu)
