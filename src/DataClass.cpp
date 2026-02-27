@@ -50,6 +50,8 @@ DataClass::DataClass(Light *light, Preferences *preferences) : prefs(preferences
 
     hasChange = "false";
 
+    vpd = 0;
+
 }
 
 
@@ -443,4 +445,18 @@ void DataClass::setHasChange(String new_status)
 String DataClass::getHasChange()
 {
     return hasChange;
+}
+
+float DataClass::getVPD()
+{
+    float svp;
+    float vpd;
+
+    // Pressão de vapor saturado (kPa)
+    svp = 0.6108 * exp((17.27 * temperature) / (temperature + 237.3));
+
+    // Déficit de pressão de vapor
+    vpd = svp * (1.0 - (hum / 100.0));
+
+    return vpd; // retorna em kPa
 }

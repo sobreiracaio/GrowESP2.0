@@ -24,5 +24,5 @@
 #include <TFT_eSPI.h>
 
 #include "esp_task_wdt.h"
-
+#include <math.h>
 

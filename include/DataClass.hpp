@@ -74,6 +74,8 @@ class DataClass {
         Light *light;
 
         String hasChange;
+
+        float vpd;
         
         public:
         
@@ -155,7 +157,8 @@ class DataClass {
 
         void setHasChange(String new_status);
         String getHasChange();
-            
+        
+        float getVPD();
         
         
         
