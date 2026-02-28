@@ -75,173 +75,145 @@ bool OTA::getHasUpdate()
 
 int OTA::updateDevice()
 {
+    // 1. Liberação de RAM Prévia
     if (!firebase || !firebase->stopApp()) {
         return -1;
     }
+    
+    display->logoScreen("Buscando Update...");
+    String assetId = "";
+    String tagParaSalvar = "";
 
-    display->logoScreen("Atualizando, aguarde!");
-    WiFiClientSecure client;
-    client.setInsecure();
-
-    HTTPClient https;
-    if (!https.begin(client, binaryUrl))
+    // BLOCO 1: Busca o ID do Asset (GitHub API)
+    // As chaves { } garantem que os objetos SSL e HTTP saiam da RAM ao final do bloco
     {
-        firebase->init();
-        return -1;
-    }
+        WiFiClientSecure client;
+        client.setInsecure();
+        HTTPClient https;
+        https.setTimeout(15000); // 15 segundos de timeout
 
-    https.addHeader("Authorization", String("token ") + token);
-    https.addHeader("Accept", "application/vnd.github.v3+json");
-    https.addHeader("User-Agent", "ESP32");
+        if (https.begin(client, binaryUrl)) {
+            https.addHeader("Authorization", String("token ") + token);
+            https.addHeader("User-Agent", "ESP32-OTA");
 
-    int httpCode = https.GET();
-    if (httpCode != HTTP_CODE_OK)
-    {
-        https.end();
-        firebase->init();
-        return -1;
-    }
-
-    String payload = https.getString();
-    https.end();
-
-    int tagPos = payload.indexOf("\"tag_name\":\"");
-    if (tagPos != -1)
-    {
-        tagPos += 12;
-        releaseTag = payload.substring(tagPos, payload.indexOf("\"", tagPos));
-    }
-
-    int namePos = payload.indexOf("\"name\":\"");
-    if (namePos != -1)
-    {
-        namePos += 8;
-        releaseName = payload.substring(namePos, payload.indexOf("\"", namePos));
-    }
-
-    int bodyPos = payload.indexOf("\"body\":\"");
-    if (bodyPos != -1)
-    {
-        bodyPos += 8;
-        releaseBody = payload.substring(bodyPos, payload.indexOf("\"", bodyPos));
-        releaseBody.replace("\\r\\n", "\n");
-        releaseBody.replace("\\n", "\n");
-    }
-
-    int datePos = payload.indexOf("\"published_at\":\"");
-    if (datePos != -1)
-    {
-        datePos += 16;
-        releaseDate = payload.substring(datePos, payload.indexOf("\"", datePos));
-    }
-
-    int assetsPos = payload.indexOf("\"assets\":[");
-    if (assetsPos == -1)
-    {
-        firebase->init();
-        return -1;
-    }
-
-    int idPos = payload.indexOf("\"id\":", assetsPos);
-    if (idPos == -1)
-    {
-        firebase->init();
-        return -1;
-    }
-
-    idPos += 5;
-    String assetId = payload.substring(idPos, payload.indexOf(",", idPos));
-    assetId.trim();
-    payload = ""; // libera heap antes do download
-
-    String assetUrl = "https://api.github.com/repos/sobreiracaio/GrowESP2.0/releases/assets/" + assetId;
-
-    WiFiClientSecure client2;
-    client2.setInsecure();
-
-    HTTPClient https2;
-    if (!https2.begin(client2, assetUrl))
-    {
-        firebase->init();
-        return -1;
-    }
-
-    https2.addHeader("Authorization", String("token ") + token);
-    https2.addHeader("Accept", "application/octet-stream");
-    https2.addHeader("User-Agent", "ESP32");
-    https2.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-
-    httpCode = https2.GET();
-    if (httpCode != HTTP_CODE_OK)
-    {
-        https2.end();
-        firebase->init();
-        return -1;
-    }
-
-    totalSize   = https2.getSize();
-    currentSize = 0;
-
-    if (totalSize <= 0)
-    {
-        https2.end();
-        firebase->init();
-        return -1;
-    }
-
-    if (!Update.begin(totalSize))
-    {
-        https2.end();
-        firebase->init();
-        return -1;
-    }
-
-    WiFiClient* stream = https2.getStreamPtr();
-    uint8_t     buffer[1024];
-
-    while (https2.connected() && currentSize < totalSize)
-    {
-        esp_task_wdt_reset();
-        size_t available = stream->available();
-        if (available)
-        {
-            int bytesRead = stream->readBytes(
-                buffer,
-                (available > sizeof(buffer)) ? sizeof(buffer) : available
-            );
-            if (bytesRead > 0)
-            {
-                if (Update.write(buffer, bytesRead) != bytesRead)
-                {
-                    https2.end();
-                    firebase->init();
-                    return -1;
+            int httpCode = https.GET();
+            if (httpCode == HTTP_CODE_OK) {
+                // Se o JSON for muito grande, o getString() pode causar crash. 
+                // Idealmente usaríamos ArduinoJson, mas vamos limpar a String logo após o uso.
+                String payload = https.getString();
+                
+                // Extração da TAG
+                int tagPos = payload.indexOf("\"tag_name\":\"");
+                if (tagPos != -1) {
+                    tagPos += 12;
+                    tagParaSalvar = payload.substring(tagPos, payload.indexOf("\"", tagPos));
                 }
-                currentSize += bytesRead;
+
+                // Extração do ID do Asset
+                int assetsPos = payload.indexOf("\"assets\":[");
+                if (assetsPos != -1) {
+                    int idPos = payload.indexOf("\"id\":", assetsPos);
+                    if (idPos != -1) {
+                        idPos += 5;
+                        assetId = payload.substring(idPos, payload.indexOf(",", idPos));
+                        assetId.trim();
+                    }
+                }
+                payload = ""; // Limpa a string gigante imediatamente
+            }
+            https.end();
+        }
+    } 
+
+    // Se não achou o ID, volta pro Firebase
+    if (assetId == "" || assetId == "null") {
+        Serial.println("[OTA] Asset ID não encontrado.");
+        firebase->init();
+        return -1;
+    }
+
+    // Intervalo para o sistema respirar e reorganizar o Heap
+    delay(500);
+    yield();
+
+    // BLOCO 2: Download e Escrita do Binário
+    display->logoScreen("Baixando... 0%");
+    int result = -1;
+
+    {
+        WiFiClientSecure client2;
+        client2.setInsecure();
+        // Opcional: client2.setBufferSizes(1024, 1024); // Economiza RAM se o servidor GitHub aceitar
+
+        HTTPClient https2;
+        String assetUrl = "https://api.github.com/repos/sobreiracaio/GrowESP2.0/releases/assets/" + assetId;
+        
+        https2.begin(client2, assetUrl);
+        https2.addHeader("Authorization", String("token ") + token);
+        https2.addHeader("Accept", "application/octet-stream");
+        https2.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+
+        int httpCode = https2.GET();
+        int totalSize = https2.getSize();
+
+        if (httpCode == HTTP_CODE_OK && totalSize > 0) {
+            if (Update.begin(totalSize)) {
+                WiFiClient* stream = https2.getStreamPtr();
+                uint8_t buffer[2048]; // Buffer de 2KB
+                size_t downloaded = 0;
+                int lastProgress = -1;
+
+                while (https2.connected() && downloaded < totalSize) {
+                    // Prevenção de Watchdog (WDT)
+                    esp_task_wdt_reset(); 
+                    yield();
+
+                    size_t available = stream->available();
+                    if (available > 0) {
+                        int bytesRead = stream->readBytes(buffer, min(available, sizeof(buffer)));
+                        if (bytesRead > 0) {
+                            Update.write(buffer, bytesRead);
+                            downloaded += bytesRead;
+
+                            // Atualiza progresso no display (apenas se mudar o %)
+                            int progress = (downloaded * 100) / totalSize;
+                            if (progress % 5 == 0 && progress != lastProgress) {
+                                String msg = "Baixando... " + String(progress) + "%";
+                                display->logoScreen(msg.c_str());
+                                lastProgress = progress;
+                                Serial.printf("[OTA] Progresso: %d%%\n", progress);
+                            }
+                        }
+                    } else {
+                        delay(10); // Aguarda dados sem travar a CPU
+                    }
+                }
+
+                if (Update.end(true)) {
+                    if (Update.isFinished()) {
+                        Serial.println("[OTA] Sucesso!");
+                        if (tagParaSalvar.length() > 0) setVersion(tagParaSalvar);
+                        result = 0; 
+                    }
+                } else {
+                    Serial.printf("[OTA] Erro Update: %s\n", Update.errorString());
+                }
             }
         }
-        delay(1);
+        https2.end();
     }
 
-    https2.end();
-
-    if (!Update.end(true) || !Update.isFinished())
-    {
+    if (result == 0) {
+        display->logoScreen("Sucesso! Reiniciando...");
+        delay(2000);
+        ESP.restart();
+    } else {
+        display->logoScreen("Erro na Atualização!");
+        delay(2000);
         firebase->init();
-        return -1;
     }
 
-    // Grava versão no Preferences — sem Firebase, sem SSL, sem competição de heap
-    if (releaseTag.length() > 0)
-    {
-        setVersion(releaseTag);
-        Serial.printf("[OTA] Versao %s salva em Preferences\n", releaseTag.c_str());
-    }
-
-    display->logoScreen("Sistema Atualizado com Sucesso! Reiniciando!");
-    delay(500);
-    ESP.restart();
-    return 0;
+    return result;
 }
 
 int OTA::fetchReleaseInfo()

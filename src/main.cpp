@@ -174,8 +174,17 @@ void applyReceivedData(int i, const String& data)
 
 void sendAndReceiveData()
 {
-    if (!firebase || !firebase->isReady()) return;
     if (!wifi.getStatus()) return;
+    if (!firebase->isHealthy()) 
+    {
+        Serial.println("[Firebase] Não saudável, reiniciando conexão...");
+        firebase->stopApp();
+        delay(500);
+        firebase->init();
+        return;
+    }
+
+    if (!firebase || !firebase->isReady()) return;
     if (ESP.getMaxAllocHeap() < 20000) {
         Serial.printf("[HEAP] Critico (%d bytes) — abortando Firebase\n", ESP.getMaxAllocHeap());
         return;
@@ -196,8 +205,9 @@ void sendAndReceiveData()
             String data;
             data.reserve(64);
             firebase->awaitGet(fullPath, &data);
+            esp_task_wdt_reset();
             applyReceivedData(_rcvIndex, data);
-
+            esp_task_wdt_reset();
             Serial.printf("[RCV] %d/%d: %s = %s\n", _rcvIndex+1, _pathsCount, pathBuf, data.c_str());
             _rcvIndex++;
         } else {
@@ -437,10 +447,17 @@ void ButtonIdle()
             if (button[i]->read()) break;
         }
 
-        if (brightness == 0) {
+        if (brightness == 0) 
+        {
             menu = -2;
-            esp_task_wdt_reset(); // ← antes de operações Firebase
-            sendAndReceiveData();
+            static unsigned long lastFirebaseCall = 0;
+            if (millis() - lastFirebaseCall > 20000) 
+            { // máx 1x a cada 20s
+                lastFirebaseCall = millis();
+                sendAndReceiveData();
+            }
+    
+            esp_task_wdt_reset();
             wifi.loop();
         }
     }
@@ -635,7 +652,7 @@ void setup()
         nvs_flash_erase();
         nvs_flash_init();
     }
-    Serial.begin(115200);
+    //Serial.begin(115200);
     display->logoScreen("Ajustando protocolos de comunicacao...");
     delay(500);
     Serial2.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
@@ -688,6 +705,8 @@ void setup()
 
 void loop() 
 {
+    esp_task_wdt_reset();
+
     if(wifi.getStatus() && rtc.getStatus())
         getNow();
     
