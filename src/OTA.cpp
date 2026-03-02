@@ -75,22 +75,23 @@ bool OTA::getHasUpdate()
 
 int OTA::updateDevice()
 {
-    // 1. Liberação de RAM Prévia
+    // Feedback imediato: trava a percepção do usuário no menu de "Aguarde"
+    display->logoScreen("Iniciando OTA...");
+    
     if (!firebase || !firebase->stopApp()) {
         return -1;
     }
-    
-    display->logoScreen("Buscando Update...");
+
     String assetId = "";
     String tagParaSalvar = "";
+    const int barraTotal = 20; // Quantidade de caracteres "|" na barra cheia
 
-    // BLOCO 1: Busca o ID do Asset (GitHub API)
-    // As chaves { } garantem que os objetos SSL e HTTP saiam da RAM ao final do bloco
+    // BLOCO 1: Busca do JSON (Escopo isolado para RAM)
     {
         WiFiClientSecure client;
         client.setInsecure();
         HTTPClient https;
-        https.setTimeout(15000); // 15 segundos de timeout
+        https.setTimeout(15000);
 
         if (https.begin(client, binaryUrl)) {
             https.addHeader("Authorization", String("token ") + token);
@@ -98,18 +99,15 @@ int OTA::updateDevice()
 
             int httpCode = https.GET();
             if (httpCode == HTTP_CODE_OK) {
-                // Se o JSON for muito grande, o getString() pode causar crash. 
-                // Idealmente usaríamos ArduinoJson, mas vamos limpar a String logo após o uso.
                 String payload = https.getString();
                 
-                // Extração da TAG
+                // Extração simples de Tag e Asset ID
                 int tagPos = payload.indexOf("\"tag_name\":\"");
                 if (tagPos != -1) {
                     tagPos += 12;
                     tagParaSalvar = payload.substring(tagPos, payload.indexOf("\"", tagPos));
                 }
 
-                // Extração do ID do Asset
                 int assetsPos = payload.indexOf("\"assets\":[");
                 if (assetsPos != -1) {
                     int idPos = payload.indexOf("\"id\":", assetsPos);
@@ -119,53 +117,40 @@ int OTA::updateDevice()
                         assetId.trim();
                     }
                 }
-                payload = ""; // Limpa a string gigante imediatamente
             }
             https.end();
         }
-    } 
+    }
 
-    // Se não achou o ID, volta pro Firebase
     if (assetId == "" || assetId == "null") {
-        Serial.println("[OTA] Asset ID não encontrado.");
         firebase->init();
         return -1;
     }
 
-    // Intervalo para o sistema respirar e reorganizar o Heap
-    delay(500);
-    yield();
-
-    // BLOCO 2: Download e Escrita do Binário
-    display->logoScreen("Baixando... 0%");
-    int result = -1;
-
+    // BLOCO 2: Download do Binário com Barra de Progresso
     {
         WiFiClientSecure client2;
         client2.setInsecure();
-        // Opcional: client2.setBufferSizes(1024, 1024); // Economiza RAM se o servidor GitHub aceitar
-
         HTTPClient https2;
-        String assetUrl = "https://api.github.com/repos/sobreiracaio/GrowESP2.0/releases/assets/" + assetId;
         
+        String assetUrl = "https://api.github.com/repos/sobreiracaio/GrowESP2.0/releases/assets/" + assetId;
         https2.begin(client2, assetUrl);
         https2.addHeader("Authorization", String("token ") + token);
         https2.addHeader("Accept", "application/octet-stream");
         https2.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
 
         int httpCode = https2.GET();
-        int totalSize = https2.getSize();
+        size_t totalSize = https2.getSize();
 
         if (httpCode == HTTP_CODE_OK && totalSize > 0) {
             if (Update.begin(totalSize)) {
                 WiFiClient* stream = https2.getStreamPtr();
-                uint8_t buffer[2048]; // Buffer de 2KB
+                uint8_t buffer[2048];
                 size_t downloaded = 0;
-                int lastProgress = -1;
+                int lastBarraCount = -1;
 
                 while (https2.connected() && downloaded < totalSize) {
-                    // Prevenção de Watchdog (WDT)
-                    esp_task_wdt_reset(); 
+                    esp_task_wdt_reset();
                     yield();
 
                     size_t available = stream->available();
@@ -175,45 +160,47 @@ int OTA::updateDevice()
                             Update.write(buffer, bytesRead);
                             downloaded += bytesRead;
 
-                            // Atualiza progresso no display (apenas se mudar o %)
-                            int progress = (downloaded * 100) / totalSize;
-                            if (progress % 5 == 0 && progress != lastProgress) {
-                                String msg = "Baixando... " + String(progress) + "%";
-                                display->logoScreen(msg.c_str());
-                                lastProgress = progress;
-                                Serial.printf("[OTA] Progresso: %d%%\n", progress);
+                            // Cálculo da Barra de Progresso [||||      ]
+                            int progressoPorcento = (downloaded * 100) / totalSize;
+                            int barraAtual = (downloaded * barraTotal) / totalSize;
+
+                            // Atualiza display apenas se a barra mudar (otimização de CPU)
+                            if (barraAtual != lastBarraCount) {
+                                String visualBarra = "[";
+                                for (int i = 0; i < barraTotal; i++) {
+                                    if (i < barraAtual) visualBarra += "|";
+                                    else visualBarra += " ";
+                                }
+                                visualBarra += "] " + String(progressoPorcento) + "%";
+                                
+                                display->logoScreen(visualBarra.c_str());
+                                lastBarraCount = barraAtual;
                             }
                         }
                     } else {
-                        delay(10); // Aguarda dados sem travar a CPU
+                        delay(10);
                     }
                 }
 
                 if (Update.end(true)) {
                     if (Update.isFinished()) {
-                        Serial.println("[OTA] Sucesso!");
                         if (tagParaSalvar.length() > 0) setVersion(tagParaSalvar);
-                        result = 0; 
+                        display->logoScreen("Sucesso! Reiniciando");
+                        delay(1500);
+                        ESP.restart();
+                        return 0;
                     }
-                } else {
-                    Serial.printf("[OTA] Erro Update: %s\n", Update.errorString());
                 }
             }
         }
         https2.end();
     }
 
-    if (result == 0) {
-        display->logoScreen("Sucesso! Reiniciando...");
-        delay(2000);
-        ESP.restart();
-    } else {
-        display->logoScreen("Erro na Atualização!");
-        delay(2000);
-        firebase->init();
-    }
-
-    return result;
+    // Se chegar aqui, algo deu errado
+    display->logoScreen("Erro no Update!");
+    delay(2000);
+    firebase->init();
+    return -1;
 }
 
 int OTA::fetchReleaseInfo()
