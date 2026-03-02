@@ -316,7 +316,8 @@ void receiveFirebaseData()
         {"/InsertedData/Sensor/WaterReserv/Calibration/Reserv", true},
         {"/InsertedData/Sensor/WaterReserv/Calibration/Capacity", true},
         {"/Version", true},
-        {"/Status", true}  
+        {"/Status", true}
+          
     };
     
     int paths_size = sizeof(paths) / sizeof(paths[0]);  // ✅ Tamanho correto
@@ -419,6 +420,8 @@ void receiveFirebaseData()
                 data_class.setIsRunning(data == "true");
                 //Serial.printf("Status : %d\n", data_class.getIsRunning());
                 break;
+
+            
         }
     }
 }
@@ -450,12 +453,9 @@ void ButtonIdle()
         if (brightness == 0) 
         {
             menu = -2;
-            static unsigned long lastFirebaseCall = 0;
-            if (millis() - lastFirebaseCall > 20000) 
-            { // máx 1x a cada 20s
-                lastFirebaseCall = millis();
-                sendAndReceiveData();
-            }
+            
+            sendAndReceiveData();
+            
     
             esp_task_wdt_reset();
             wifi.loop();

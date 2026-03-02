@@ -128,7 +128,10 @@ void FBase::loop() {
         return;
     }
     
-    ssl_client.setTimeout(5); // Timeout agressivo
+    if (ssl_client.connected()) 
+    {
+        ssl_client.setTimeout(5);
+    }
     app.loop();
     Database.loop();
 }
