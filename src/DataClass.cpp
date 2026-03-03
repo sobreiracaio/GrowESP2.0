@@ -259,7 +259,7 @@ void DataClass::setDehumidStatus(bool status)
 
 float DataClass::getTemp()
 {
-    return temperature;
+   return roundf(temperature * 4.0f) / 4.0f;
 }
 
 float DataClass::getTargetTemp()
@@ -274,7 +274,7 @@ float DataClass::getTempTolerance()
 
 float DataClass::getHumid()
 {
-    return hum;
+    return roundf(hum * 4.0f) / 4.0f;
 }
 
 float DataClass::getTargetHumid()
@@ -383,7 +383,7 @@ float DataClass::getWaterCalibrated()
     if (percent > 100.0f)
         percent = 100.0f;
 
-    return percent;
+    return roundf(percent * 4.0f) / 4.0f;
 }
 
 float DataClass::getReservWarning()
