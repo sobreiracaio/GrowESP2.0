@@ -175,9 +175,19 @@ void applyReceivedData(int i, const String& data)
 void sendAndReceiveData()
 {
     if (!wifi.getStatus()) return;
+
+    if (ESP.getFreeHeap() < 30000) 
+    {
+        Serial.printf("[HEAP] Baixo (%d), reconectando Firebase...\n", ESP.getFreeHeap());
+        firebase->stopApp();
+        delay(1000);
+        firebase->init();
+        return;
+    }
+
     if (!firebase->isHealthy()) 
     {
-        Serial.println("[Firebase] Não saudável, reiniciando conexão...");
+        //Serial.println("[Firebase] Não saudável, reiniciando conexão...");
         firebase->stopApp();
         delay(500);
         firebase->init();
@@ -186,7 +196,7 @@ void sendAndReceiveData()
 
     if (!firebase || !firebase->isReady()) return;
     if (ESP.getMaxAllocHeap() < 20000) {
-        Serial.printf("[HEAP] Critico (%d bytes) — abortando Firebase\n", ESP.getMaxAllocHeap());
+        //Serial.printf("[HEAP] Critico (%d bytes) — abortando Firebase\n", ESP.getMaxAllocHeap());
         return;
     }
 
@@ -208,7 +218,7 @@ void sendAndReceiveData()
             esp_task_wdt_reset();
             applyReceivedData(_rcvIndex, data);
             esp_task_wdt_reset();
-            Serial.printf("[RCV] %d/%d: %s = %s\n", _rcvIndex+1, _pathsCount, pathBuf, data.c_str());
+            //Serial.printf("[RCV] %d/%d: %s = %s\n", _rcvIndex+1, _pathsCount, pathBuf, data.c_str());
             _rcvIndex++;
         } else {
             // Terminou todos os paths
@@ -217,7 +227,7 @@ void sendAndReceiveData()
             data_class.setHasChange("false");
             _rcvActive = false;
             _rcvIndex  = -1;
-            Serial.println("[RCV] Receive completo.");
+            //Serial.println("[RCV] Receive completo.");
         }
         return; // ← sai sem fazer send neste ciclo
     }
@@ -282,7 +292,7 @@ void sendAndReceiveData()
     data_class.setHasChange(hasChange);
 
     if (hasChange == "true") {
-        Serial.println("[RCV] HasChange detectado, iniciando receive...");
+        //Serial.println("[RCV] HasChange detectado, iniciando receive...");
         _rcvActive = true;
         _rcvIndex  = 0;
     }
@@ -484,7 +494,7 @@ void initFirebaseStructure()
     String version = ota.getVersion();
     firebase->awaitGet(safeEmail + "/Status", &status);
     firebase->aSyncSetString(safeEmail + "/Version", version);
-    Serial.printf("[Firebase] Status retornado: '%s'\n", status.c_str());
+    //Serial.printf("[Firebase] Status retornado: '%s'\n", status.c_str());
     
     if (status == "true" || status == "false")
     {
@@ -581,7 +591,7 @@ void firebase_healthy_startup()
 
     for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++)
     {
-        Serial.printf("[BOOT] Tentativa %d/%d de init Firebase\n", attempt, MAX_ATTEMPTS);
+        //Serial.printf("[BOOT] Tentativa %d/%d de init Firebase\n", attempt, MAX_ATTEMPTS);
         esp_task_wdt_reset();
 
         // --- initFirebaseStructure com timeout ---
@@ -595,11 +605,11 @@ void firebase_healthy_startup()
             if (millis() - t < OP_TIMEOUT)
             {
                 structureOk = true;
-                Serial.println("[BOOT] initFirebaseStructure OK");
+                //Serial.println("[BOOT] initFirebaseStructure OK");
             }
             else
             {
-                Serial.println("[BOOT] initFirebaseStructure TIMEOUT");
+                //Serial.println("[BOOT] initFirebaseStructure TIMEOUT");
                 continue; // tenta de novo
             }
         }
@@ -615,11 +625,11 @@ void firebase_healthy_startup()
             if (millis() - t < OP_TIMEOUT)
             {
                 receiveOk = true;
-                Serial.println("[BOOT] receiveFirebaseData OK");
+                //Serial.println("[BOOT] receiveFirebaseData OK");
             }
             else
             {
-                Serial.println("[BOOT] receiveFirebaseData TIMEOUT");
+                //Serial.println("[BOOT] receiveFirebaseData TIMEOUT");
                 continue;
             }
         }
@@ -630,14 +640,29 @@ void firebase_healthy_startup()
 
     if (!structureOk || !receiveOk)
     {
-        Serial.println("[BOOT] Firebase falhou após todas as tentativas, reiniciando...");
+        //Serial.println("[BOOT] Firebase falhou após todas as tentativas, reiniciando...");
         display->logoScreen("Falha na inicializacao, reiniciando...");
         delay(2000);
         ESP.restart();
     }
 
-    display->logoScreen("Conectado ao banco de dados!");
+        display->logoScreen("Conectado ao banco de dados!");
+    }
 }
+
+void heapMonitor()
+{
+    
+    
+    static unsigned long lastHeapLog = 0;
+    if (millis() - lastHeapLog > 60000) 
+    {
+        lastHeapLog = millis();
+        Serial.printf("[HEAP] Free: %d | Min ever: %d | Max block: %d\n",
+            ESP.getFreeHeap(),
+            ESP.getMinFreeHeap(),
+            ESP.getMaxAllocHeap());
+    }
 }
 
 void setup() 
@@ -652,13 +677,13 @@ void setup()
         nvs_flash_erase();
         nvs_flash_init();
     }
-    //Serial.begin(115200);
+    Serial.begin(115200);
     display->logoScreen("Ajustando protocolos de comunicacao...");
     delay(500);
     Serial2.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
     Serial2.flush();
     
-    
+   
     display->logoScreen("Inicializando equipamento...");
     delay(500);
     light.setTimeFunction(getNow);
@@ -706,6 +731,7 @@ void setup()
 void loop() 
 {
     esp_task_wdt_reset();
+    //heapMonitor();
 
     if(wifi.getStatus() && rtc.getStatus())
         getNow();

@@ -54,9 +54,9 @@ class FBase {
         void awaitGet(String& path, String *result);
         void awaitSet(String &path, String value, int type);
 
-        void aSyncSetString(String &path, String &value);
-        void aSyncSetFloat(String &path, float &value);
-        void aSyncSetBool(String &path, bool &value);
+        void aSyncSetString(String path, String value);
+        void aSyncSetFloat(String path, float value);
+        void aSyncSetBool(String path, bool value);
 
         void aSyncGet(String& path, String &result);
         static void asyncCallback(AsyncResult &aResult);

@@ -208,12 +208,12 @@ int OTA::fetchReleaseInfo()
     firebase->stopApp();
     WiFiClientSecure client;
     client.setInsecure();
-    Serial.printf("[OTA] URL: %s\n", binaryUrl.c_str());
-    Serial.printf("[OTA] Token: %s\n", token.c_str());
+    //Serial.printf("[OTA] URL: %s\n", binaryUrl.c_str());
+    //Serial.printf("[OTA] Token: %s\n", token.c_str());
     HTTPClient https;
     if (!https.begin(client, binaryUrl))
     {
-        Serial.println("[OTA] Falha ao iniciar conexao");
+        //Serial.println("[OTA] Falha ao iniciar conexao");
         firebase->init();
         return -1;
     }
@@ -225,7 +225,7 @@ int OTA::fetchReleaseInfo()
     int httpCode = https.GET();
     if (httpCode != HTTP_CODE_OK)
     {
-        Serial.printf("[OTA] HTTP erro ao buscar release: %d\n", httpCode);
+        //Serial.printf("[OTA] HTTP erro ao buscar release: %d\n", httpCode);
         https.end();
         firebase->init();
         return -1;
@@ -272,10 +272,10 @@ int OTA::fetchReleaseInfo()
         releaseDate = payload.substring(datePos, dateEnd);
     }
 
-    Serial.printf("[OTA] Tag: %s\n", releaseTag.c_str());
-    Serial.printf("[OTA] Nome: %s\n", releaseName.c_str());
-    Serial.printf("[OTA] Data: %s\n", releaseDate.c_str());
-    Serial.printf("[OTA] Descricao: %s\n", releaseBody.c_str());
+    //Serial.printf("[OTA] Tag: %s\n", releaseTag.c_str());
+    //Serial.printf("[OTA] Nome: %s\n", releaseName.c_str());
+    //Serial.printf("[OTA] Data: %s\n", releaseDate.c_str());
+    //Serial.printf("[OTA] Descricao: %s\n", releaseBody.c_str());
     firebase->init();
     return 0;
 }

@@ -132,7 +132,13 @@ void FBase::loop() {
     {
         ssl_client.setTimeout(5);
     }
+     unsigned long before = millis();
     app.loop();
+    if (millis() - before > 5000) {
+        authenticated = false;
+        ssl_client.stop();
+        return;
+    }
     Database.loop();
 }
 
@@ -163,21 +169,30 @@ void FBase::aSyncGet(String& path, String &result)
     Database.get(aClient, path.c_str(), asyncCallback, false, "aSyncGetTask");
 }
 
-static bool _pendingString = false;
+// ─── String ───────────────────────────────────────────────────────────────────
+static bool   _pendingString    = false;
+static String _lastStringPath   = "";
+static String _lastStringValue  = "";
 
-void FBase::aSyncSetString(String &path, String &value)
+void FBase::aSyncSetString(String path, String value)
 {
     if (!isReady() || _pendingString) return;
+    if (path == _lastStringPath && value == _lastStringValue) return;
 
-    _pendingString = true;
+    _pendingString   = true;
+    _lastStringPath  = path;
+    _lastStringValue = value;
 
     Database.set(aClient, path, value.c_str(), [](AsyncResult &result) {
         _pendingString = false;
-        if (result.isError())
+        if (result.isError()) {
             Serial.printf("[Firebase] Erro string: %s\n", result.error().message().c_str());
+            _lastStringPath  = "";
+            _lastStringValue = "";
+        }
     });
 
-    unsigned long timeout = millis();
+    unsigned long timeout   = millis();
     unsigned long lastYield = millis();
 
     while (_pendingString && millis() - timeout < 3000) {
@@ -187,29 +202,47 @@ void FBase::aSyncSetString(String &path, String &value)
             lastYield = millis();
             yield();
         }
+        if (WiFi.status() != WL_CONNECTED) {
+            _pendingString   = false;
+            _lastStringPath  = "";
+            _lastStringValue = "";
+            break;
+        }
     }
 
     if (_pendingString) {
         Serial.println("[Firebase] timeout string");
-        _pendingString = false;
+        _pendingString   = false;
+        _lastStringPath  = "";
+        _lastStringValue = "";
     }
 }
 
-static bool _pendingFloat = false;
+// ─── Float ─────────────────────────────────────────────────────────────────────
 
-void FBase::aSyncSetFloat(String &path, float &value)
+static bool   _pendingFloat    = false;
+static String _lastFloatPath   = "";
+static float  _lastFloatValue  = -9999.0f;
+
+void FBase::aSyncSetFloat(String path, float value)
 {
     if (!isReady() || _pendingFloat) return;
+    if (path == _lastFloatPath && value == _lastFloatValue) return;
 
-    _pendingFloat = true;
+    _pendingFloat   = true;
+    _lastFloatPath  = path;
+    _lastFloatValue = value;
 
     Database.set(aClient, path, value, [](AsyncResult &result) {
         _pendingFloat = false;
-        if (result.isError())
+        if (result.isError()) {
             Serial.printf("[Firebase] Erro float: %s\n", result.error().message().c_str());
+            _lastFloatPath  = "";
+            _lastFloatValue = -9999.0f;
+        }
     });
 
-    unsigned long timeout = millis();
+    unsigned long timeout   = millis();
     unsigned long lastYield = millis();
 
     while (_pendingFloat && millis() - timeout < 3000) {
@@ -219,29 +252,47 @@ void FBase::aSyncSetFloat(String &path, float &value)
             lastYield = millis();
             yield();
         }
+        if (WiFi.status() != WL_CONNECTED) {
+            _pendingFloat   = false;
+            _lastFloatPath  = "";
+            _lastFloatValue = -9999.0f;
+            break;
+        }
     }
 
     if (_pendingFloat) {
         Serial.println("[Firebase] timeout float");
-        _pendingFloat = false;
+        _pendingFloat   = false;
+        _lastFloatPath  = "";
+        _lastFloatValue = -9999.0f;
     }
 }
 
-static bool _pendingBool = false;
+// ─── Bool ─────────────────────────────────────────────────────────────────────
+static bool _pendingBool     = false;
+static String _lastBoolPath  = "";
+static bool   _lastBoolValue = false;
+static bool   _lastBoolSet   = false;  // flag para primeiro envio
 
-void FBase::aSyncSetBool(String &path, bool &value)
+void FBase::aSyncSetBool(String path, bool value)
 {
     if (!isReady() || _pendingBool) return;
+    if (_lastBoolSet && path == _lastBoolPath && value == _lastBoolValue) return;
 
-    _pendingBool = true;
+    _pendingBool   = true;
+    _lastBoolPath  = path;
+    _lastBoolValue = value;
+    _lastBoolSet   = true;
 
     Database.set(aClient, path, value, [](AsyncResult &result) {
         _pendingBool = false;
-        if (result.isError())
+        if (result.isError()) {
             Serial.printf("[Firebase] Erro bool: %s\n", result.error().message().c_str());
+            _lastBoolSet = false;
+        }
     });
 
-    unsigned long timeout = millis();
+    unsigned long timeout   = millis();
     unsigned long lastYield = millis();
 
     while (_pendingBool && millis() - timeout < 3000) {
@@ -251,11 +302,17 @@ void FBase::aSyncSetBool(String &path, bool &value)
             lastYield = millis();
             yield();
         }
+        if (WiFi.status() != WL_CONNECTED) {
+            _pendingBool = false;
+            _lastBoolSet = false;
+            break;
+        }
     }
 
     if (_pendingBool) {
         Serial.println("[Firebase] timeout bool");
         _pendingBool = false;
+        _lastBoolSet = false;
     }
 }
 
