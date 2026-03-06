@@ -34,8 +34,8 @@ FBase::FBase(const String& api, const String& db_url, const String& user_email, 
       {}
 
 bool FBase::init() {
-    const unsigned long INIT_TIMEOUT = 30000; // 30 segundos
-    const unsigned long LOOP_INTERVAL = 50;   // Intervalo entre loops
+    const unsigned long INIT_TIMEOUT = 30000;
+    const unsigned long LOOP_INTERVAL = 50;
     
     unsigned long startTime = millis();
     unsigned long lastLoopTime = 0;
@@ -50,24 +50,21 @@ bool FBase::init() {
     
     initializeApp(aClient, app, getAuth(user_auth), processData, "authTask");
     
-    // Loop sem bloqueio com timeout
     while (app.isInitialized() && !app.ready()) {
         unsigned long currentTime = millis();
         
-        // Timeout
         if (currentTime - startTime > INIT_TIMEOUT) {
             if (ssl_client.connected()) ssl_client.stop();
             authenticated = false;
             return false;
         }
         
-        // Executa loop apenas no intervalo definido
         if (currentTime - lastLoopTime >= LOOP_INTERVAL) {
             lastLoopTime = currentTime;
             app.loop();
         }
         
-        yield(); // Mantém watchdog feliz
+        yield();
     }
     
     if (app.ready()) {
@@ -87,32 +84,41 @@ bool FBase::init() {
 bool FBase::stopApp()
 {
     if (!authenticated) return true;
+
+    // Drena operações pendentes antes de fechar para evitar pbuf crash
+    unsigned long drainStart = millis();
+    while (isBusy() && millis() - drainStart < 500) {
+        app.loop();
+        yield();
+    }
+
+    // Força cancelamento se ainda pendente após drain
+    _pendingFloat  = false;
+    _pendingBool   = false;
+    _pendingString = false;
+    _lastBoolSet   = false;
     
-    const unsigned long STOP_TIMEOUT = 3000; // 3 segundos
-    const unsigned long CHECK_INTERVAL = 10; // Verifica a cada 10ms
+    const unsigned long STOP_TIMEOUT = 3000;
+    const unsigned long CHECK_INTERVAL = 10;
     
     unsigned long startTime = millis();
     unsigned long lastCheckTime = 0;
     
     aClient.stopAsync(true);
     
-    // Espera não-bloqueante com timeout
     while (ssl_client.connected()) {
         unsigned long currentTime = millis();
         
-        // Timeout - força fechamento
         if (currentTime - startTime > STOP_TIMEOUT) {
             ssl_client.stop();
             break;
         }
         
-        // Verifica status apenas no intervalo definido
         if (currentTime - lastCheckTime >= CHECK_INTERVAL) {
             lastCheckTime = currentTime;
-            // ssl_client.connected() já é verificado no while
         }
         
-        yield(); // Mantém watchdog feliz
+        yield();
     }
     
     authenticated = false;
@@ -122,8 +128,14 @@ bool FBase::stopApp()
 void FBase::loop() {
     if (!authenticated || !app.ready()) return;
     
-    // ✅ Verifica se SSL ainda está vivo
     if (!ssl_client.connected() && WiFi.status() != WL_CONNECTED) {
+        // Cancela operações pendentes antes de marcar como não autenticado
+        if (isBusy()) {
+            _pendingFloat  = false;
+            _pendingString = false;
+            _pendingBool   = false;
+            _lastBoolSet   = false;
+        }
         authenticated = false;
         return;
     }
@@ -132,7 +144,8 @@ void FBase::loop() {
     {
         ssl_client.setTimeout(5);
     }
-     unsigned long before = millis();
+
+    unsigned long before = millis();
     app.loop();
     if (millis() - before > 5000) {
         authenticated = false;
@@ -153,6 +166,11 @@ bool FBase::isReady() {
     return authenticated && app.ready();
 }
 
+bool FBase::isBusy()
+{
+    return _pendingFloat || _pendingString || _pendingBool;
+}
+
 String* FBase::asyncTarget = nullptr;
 
 void FBase::asyncCallback(AsyncResult &aResult)
@@ -169,143 +187,157 @@ void FBase::aSyncGet(String& path, String &result)
     Database.get(aClient, path.c_str(), asyncCallback, false, "aSyncGetTask");
 }
 
+// ─── Ponteiro estático para callbacks sem lambda ───────────────────────────────
+FBase* FBase::_instance = NULL;
+
+void FBase::_cbString(AsyncResult &result)
+{
+    if (!_instance) return;
+    _instance->_pendingString = false;
+    if (result.isError()) {
+        Serial.printf("[Firebase] Erro string: %s\n", result.error().message().c_str());
+        _instance->_lastStringPath[0]  = '\0';
+        _instance->_lastStringValue[0] = '\0';
+    }
+}
+
+void FBase::_cbFloat(AsyncResult &result)
+{
+    if (!_instance) return;
+    _instance->_pendingFloat = false;
+    if (result.isError()) {
+        Serial.printf("[Firebase] Erro float: %s\n", result.error().message().c_str());
+        _instance->_lastFloatPath[0] = '\0';
+        _instance->_lastFloatValue   = -9999.0f;
+    }
+}
+
+void FBase::_cbBool(AsyncResult &result)
+{
+    if (!_instance) return;
+    _instance->_pendingBool = false;
+    if (result.isError()) {
+        Serial.printf("[Firebase] Erro bool: %s\n", result.error().message().c_str());
+        _instance->_lastBoolSet = false;
+    }
+}
+
 // ─── String ───────────────────────────────────────────────────────────────────
-static bool   _pendingString    = false;
-static String _lastStringPath   = "";
-static String _lastStringValue  = "";
 
 void FBase::aSyncSetString(String path, String value)
 {
     if (!isReady() || _pendingString) return;
-    if (path == _lastStringPath && value == _lastStringValue) return;
+    if (WiFi.status() != WL_CONNECTED) return;
+    if (strcmp(path.c_str(), _lastStringPath) == 0 &&
+        strcmp(value.c_str(), _lastStringValue) == 0) return;
 
-    _pendingString   = true;
-    _lastStringPath  = path;
-    _lastStringValue = value;
+    _instance = this;
+    _pendingString = true;
+    strncpy(_lastStringPath,  path.c_str(),  sizeof(_lastStringPath)  - 1);
+    strncpy(_lastStringValue, value.c_str(), sizeof(_lastStringValue) - 1);
 
-    Database.set(aClient, path, value.c_str(), [](AsyncResult &result) {
-        _pendingString = false;
-        if (result.isError()) {
-            Serial.printf("[Firebase] Erro string: %s\n", result.error().message().c_str());
-            _lastStringPath  = "";
-            _lastStringValue = "";
-        }
-    });
+    Database.set(aClient, path, value.c_str(), _cbString);
 
     unsigned long timeout   = millis();
     unsigned long lastYield = millis();
 
     while (_pendingString && millis() - timeout < 3000) {
+        if (WiFi.status() != WL_CONNECTED) {
+            _pendingString      = false;
+            _lastStringPath[0]  = '\0';
+            _lastStringValue[0] = '\0';
+            return;
+        }
         loop();
         esp_task_wdt_reset();
         if (millis() - lastYield > 10) {
             lastYield = millis();
             yield();
-        }
-        if (WiFi.status() != WL_CONNECTED) {
-            _pendingString   = false;
-            _lastStringPath  = "";
-            _lastStringValue = "";
-            break;
         }
     }
 
     if (_pendingString) {
         Serial.println("[Firebase] timeout string");
-        _pendingString   = false;
-        _lastStringPath  = "";
-        _lastStringValue = "";
+        _pendingString      = false;
+        _lastStringPath[0]  = '\0';
+        _lastStringValue[0] = '\0';
     }
 }
 
-// ─── Float ─────────────────────────────────────────────────────────────────────
-
-static bool   _pendingFloat    = false;
-static String _lastFloatPath   = "";
-static float  _lastFloatValue  = -9999.0f;
+// ─── Float ────────────────────────────────────────────────────────────────────
 
 void FBase::aSyncSetFloat(String path, float value)
 {
     if (!isReady() || _pendingFloat) return;
-    if (path == _lastFloatPath && value == _lastFloatValue) return;
+    if (WiFi.status() != WL_CONNECTED) return;
+    if (strcmp(path.c_str(), _lastFloatPath) == 0 &&
+        value == _lastFloatValue) return;
 
-    _pendingFloat   = true;
-    _lastFloatPath  = path;
+    _instance = this;
+    _pendingFloat = true;
+    strncpy(_lastFloatPath, path.c_str(), sizeof(_lastFloatPath) - 1);
     _lastFloatValue = value;
 
-    Database.set(aClient, path, value, [](AsyncResult &result) {
-        _pendingFloat = false;
-        if (result.isError()) {
-            Serial.printf("[Firebase] Erro float: %s\n", result.error().message().c_str());
-            _lastFloatPath  = "";
-            _lastFloatValue = -9999.0f;
-        }
-    });
+    Database.set(aClient, path, value, _cbFloat);
 
     unsigned long timeout   = millis();
     unsigned long lastYield = millis();
 
     while (_pendingFloat && millis() - timeout < 3000) {
+        if (WiFi.status() != WL_CONNECTED) {
+            _pendingFloat     = false;
+            _lastFloatPath[0] = '\0';
+            _lastFloatValue   = -9999.0f;
+            return;
+        }
         loop();
         esp_task_wdt_reset();
         if (millis() - lastYield > 10) {
             lastYield = millis();
             yield();
-        }
-        if (WiFi.status() != WL_CONNECTED) {
-            _pendingFloat   = false;
-            _lastFloatPath  = "";
-            _lastFloatValue = -9999.0f;
-            break;
         }
     }
 
     if (_pendingFloat) {
         Serial.println("[Firebase] timeout float");
-        _pendingFloat   = false;
-        _lastFloatPath  = "";
-        _lastFloatValue = -9999.0f;
+        _pendingFloat     = false;
+        _lastFloatPath[0] = '\0';
+        _lastFloatValue   = -9999.0f;
     }
 }
 
 // ─── Bool ─────────────────────────────────────────────────────────────────────
-static bool _pendingBool     = false;
-static String _lastBoolPath  = "";
-static bool   _lastBoolValue = false;
-static bool   _lastBoolSet   = false;  // flag para primeiro envio
 
 void FBase::aSyncSetBool(String path, bool value)
 {
     if (!isReady() || _pendingBool) return;
-    if (_lastBoolSet && path == _lastBoolPath && value == _lastBoolValue) return;
+    if (WiFi.status() != WL_CONNECTED) return;
+    if (_lastBoolSet &&
+        strcmp(path.c_str(), _lastBoolPath) == 0 &&
+        value == _lastBoolValue) return;
 
-    _pendingBool   = true;
-    _lastBoolPath  = path;
+    _instance = this;
+    _pendingBool = true;
+    strncpy(_lastBoolPath, path.c_str(), sizeof(_lastBoolPath) - 1);
     _lastBoolValue = value;
     _lastBoolSet   = true;
 
-    Database.set(aClient, path, value, [](AsyncResult &result) {
-        _pendingBool = false;
-        if (result.isError()) {
-            Serial.printf("[Firebase] Erro bool: %s\n", result.error().message().c_str());
-            _lastBoolSet = false;
-        }
-    });
+    Database.set(aClient, path, value, _cbBool);
 
     unsigned long timeout   = millis();
     unsigned long lastYield = millis();
 
     while (_pendingBool && millis() - timeout < 3000) {
+        if (WiFi.status() != WL_CONNECTED) {
+            _pendingBool = false;
+            _lastBoolSet = false;
+            return;
+        }
         loop();
         esp_task_wdt_reset();
         if (millis() - lastYield > 10) {
             lastYield = millis();
             yield();
-        }
-        if (WiFi.status() != WL_CONNECTED) {
-            _pendingBool = false;
-            _lastBoolSet = false;
-            break;
         }
     }
 
@@ -319,17 +351,17 @@ void FBase::aSyncSetBool(String path, bool value)
 void FBase::awaitGet(String& path, String *result)
 {
     if (!isReady()) return;
-    
-    // ✅ TIMEOUT POR TENTATIVA
-    const unsigned long GET_TIMEOUT = 5000; // 5 segundos
-    int retries = 2; // Reduzido de 3 para 2
+    if (WiFi.status() != WL_CONNECTED) return;
+
+    const unsigned long GET_TIMEOUT = 3000;
+    int retries = 2;
     
     while (retries > 0) {
+        if (WiFi.status() != WL_CONNECTED) return;
+
         unsigned long startTime = millis();
-        
         *result = Database.get<String>(aClient, path.c_str());
         
-        // ✅ Verifica timeout
         if (millis() - startTime > GET_TIMEOUT) {
             retries--;
             continue;
@@ -341,7 +373,6 @@ void FBase::awaitGet(String& path, String *result)
         
         retries--;
         
-        // ✅ Delay não-bloqueante
         unsigned long delayStart = millis();
         while (millis() - delayStart < 300) {
             yield();
@@ -352,13 +383,15 @@ void FBase::awaitGet(String& path, String *result)
 void FBase::awaitSet(String &path, String value, int type)
 {
     if (!isReady()) return;
+    if (WiFi.status() != WL_CONNECTED) return;
     
-    // ✅ TIMEOUT POR TENTATIVA
     const unsigned long SET_TIMEOUT = 5000;
     int retries = 2;
     bool success = false;
     
     while (retries > 0 && !success) {
+        if (WiFi.status() != WL_CONNECTED) return;
+
         unsigned long startTime = millis();
         
         if(type == INT)
@@ -370,7 +403,6 @@ void FBase::awaitSet(String &path, String value, int type)
         else if(type == BOOL)
             success = Database.set<bool>(aClient, path.c_str(), value.toInt());
         
-        // ✅ Timeout forçado
         if (millis() - startTime > SET_TIMEOUT) {
             retries--;
             continue;

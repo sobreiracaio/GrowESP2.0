@@ -32,15 +32,28 @@ class FBase {
         AsyncClientClass aClient;
         RealtimeDatabase Database;
 
-        
-
         bool authenticated;
 
-  
-        
-        static void processData(AsyncResult &aResult);
+        // flags e cache de operações pendentes
+        bool  _pendingFloat  = false;
+        bool  _pendingString = false;
+        bool  _pendingBool   = false;
+        bool  _lastBoolSet   = false;
 
+        char  _lastStringPath[128]  = "";
+        char  _lastStringValue[128] = "";
+        char  _lastFloatPath[128]   = "";
+        float _lastFloatValue       = -9999.0f;
+        char  _lastBoolPath[128]    = "";
+        bool  _lastBoolValue        = false;
+
+        static void processData(AsyncResult &aResult);
         static String *asyncTarget;
+        static FBase  *_instance;
+
+        static void _cbString(AsyncResult &aResult);
+        static void _cbFloat(AsyncResult &aResult);
+        static void _cbBool(AsyncResult &aResult);
      
     public:
 
@@ -50,6 +63,7 @@ class FBase {
         bool isReady();
         void loop();
         bool isHealthy();
+        bool isBusy();
 
         void awaitGet(String& path, String *result);
         void awaitSet(String &path, String value, int type);
@@ -61,4 +75,3 @@ class FBase {
         void aSyncGet(String& path, String &result);
         static void asyncCallback(AsyncResult &aResult);
 };
-
