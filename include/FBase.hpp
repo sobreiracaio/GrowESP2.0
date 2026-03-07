@@ -66,11 +66,15 @@ class FBase {
         bool isBusy();
 
         void awaitGet(String& path, String *result);
+        void awaitGet(const char* path, char* result, unsigned int resultSize);
         void awaitSet(String &path, String value, int type);
 
         void aSyncSetString(String path, String value);
+        void aSyncSetString(const char* path, const char* value);
         void aSyncSetFloat(String path, float value);
+        void aSyncSetFloat(const char* path, float value);
         void aSyncSetBool(String path, bool value);
+        void aSyncSetBool(const char* path, bool value);
 
         void aSyncGet(String& path, String &result);
         static void asyncCallback(AsyncResult &aResult);

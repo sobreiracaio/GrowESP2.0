@@ -9,74 +9,132 @@
 #include "Light.hpp"
 #include "Serial.hpp"
 
-
-//Libraries
+// ── Objetos globais ───────────────────────────────────────────────────────────
 Preferences prefs;
 UpdateClass update;
 
-TFT_eSPI *tft = NULL;
+TFT_eSPI    *tft     = NULL;
+Display     *display = NULL;
+FBase       *firebase = NULL;
+Button      *button[4] = {NULL};
 
-//Classes, estruturas, variaveis e objetos
-Light light;
+Light       light;
 WifiManager wifi(&prefs, nullptr);
-Time rtc( &wifi, "pool.ntp.org", "pool.ntp.br", -10800, 0);
-FBase *firebase = NULL;
+Time        rtc(&wifi, "pool.ntp.org", "pool.ntp.br", -10800, 0);
+DataClass   data_class(&light, &prefs);
+OTA         ota(&prefs, firebase, display);
 
-Display *display = NULL;
-Button* button[4] = {NULL};
-DataClass data_class(&light, &prefs);
-OTA ota(&prefs, firebase, display);
+struct tm now       = {0};
+String    safeEmail = "";
+int       menu      = -1;
 
-struct tm now = {0};
-String safeEmail = "";
-int menu = -1;
-
-static int _rcvIndex   = -1;
+// ── Receive incremental ───────────────────────────────────────────────────────
+static int  _rcvIndex  = -1;
 static bool _rcvActive = false;
 
+// ── Tabela de paths — única definição, sem duplicata ─────────────────────────
 struct PathEntry {
     const char* path;
     bool needsPrefix;
 };
 
 static const PathEntry _paths[] = {
-    {"/_Binary",                                              false},
-    {"/_Token",                                              false},
-    {"/_HasUpdate",                                          false},
-    {"/InsertedData/Light/HourOn",                           true},
-    {"/InsertedData/Light/HourOff",                          true},
-    {"/InsertedData/Sensor/Temperature/TargetTemp",          true},
-    {"/InsertedData/Sensor/Temperature/TempTolerance",       true},
-    {"/InsertedData/Sensor/Humid/TargetHumid",               true},
-    {"/InsertedData/Sensor/Humid/HumidTolerance",            true},
-    {"/InsertedData/Sensor/Soil/TargetSoil",                 true},
-    {"/InsertedData/Sensor/Soil/PumpDuration",               true},
-    {"/InsertedData/Sensor/Soil/AbsorptionDelay",            true},
-    {"/InsertedData/Sensor/Soil/SoilTolerance",              true},
-    {"/InsertedData/Sensor/Soil/Calibration/SoilSensor/Dry", true},
-    {"/InsertedData/Sensor/Soil/Calibration/SoilSensor/Wet", true},
-    {"/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow",  true},
-    {"/InsertedData/Sensor/Soil/Calibration/Behavior",       true},
-    {"/InsertedData/Sensor/WaterReserv/Calibration/Reserv",  true},
-    {"/InsertedData/Sensor/WaterReserv/Calibration/Capacity",true},
-    {"/Version",                                              true},
-    {"/Status",                                              true},
+    {"/_Binary",                                               false},
+    {"/_Token",                                                false},
+    {"/_HasUpdate",                                            false},
+    {"/InsertedData/Light/HourOn",                             true},
+    {"/InsertedData/Light/HourOff",                            true},
+    {"/InsertedData/Sensor/Temperature/TargetTemp",            true},
+    {"/InsertedData/Sensor/Temperature/TempTolerance",         true},
+    {"/InsertedData/Sensor/Humid/TargetHumid",                 true},
+    {"/InsertedData/Sensor/Humid/HumidTolerance",              true},
+    {"/InsertedData/Sensor/Soil/TargetSoil",                   true},
+    {"/InsertedData/Sensor/Soil/PumpDuration",                 true},
+    {"/InsertedData/Sensor/Soil/AbsorptionDelay",              true},
+    {"/InsertedData/Sensor/Soil/SoilTolerance",                true},
+    {"/InsertedData/Sensor/Soil/Calibration/SoilSensor/Dry",   true},
+    {"/InsertedData/Sensor/Soil/Calibration/SoilSensor/Wet",   true},
+    {"/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow",    true},
+    {"/InsertedData/Sensor/Soil/Calibration/Behavior",         true},
+    {"/InsertedData/Sensor/WaterReserv/Calibration/Reserv",    true},
+    {"/InsertedData/Sensor/WaterReserv/Calibration/Capacity",  true},
+    {"/Version",                                               true},
+    {"/Status",                                                true},
 };
 static const int _pathsCount = sizeof(_paths) / sizeof(_paths[0]);
 
+// ── Buffer de path reutilizável — sem alocação dinâmica nos loops ─────────────
+static char _pathBuf[128] = {};
 
-// ============ FUNÇÕES AUXILIARES ============
-void initClasses() {
-    tft = new TFT_eSPI();
+// Monta path em _pathBuf e retorna ponteiro para ele
+static const char* buildPath(int i)
+{
+    if (_paths[i].needsPrefix)
+        snprintf(_pathBuf, sizeof(_pathBuf), "%s%s", safeEmail.c_str(), _paths[i].path);
+    else
+        snprintf(_pathBuf, sizeof(_pathBuf), "%s", _paths[i].path);
+    return _pathBuf;
+}
+
+// ── applyReceivedData ─────────────────────────────────────────────────────────
+// Recebe char* em vez de String& para evitar cópia extra
+static void applyReceivedData(int i, const char* data)
+{
+    switch (i) {
+        case 0:  ota.setBinaryPath(data); break;
+        case 1:  ota.setToken(data); break;
+        case 2:  ota.setHasUpdate(strcmp(data, "true") == 0); break;
+        case 3: {
+            String s(data);
+            int c = s.indexOf(':');
+            if (c != -1) {
+                data_class.setDayTime(s.substring(0,c).toInt(), s.substring(c+1).toInt());
+                data_class.getDayTime(display->day);
+            }
+            break;
+        }
+        case 4: {
+            String s(data);
+            int c = s.indexOf(':');
+            if (c != -1) {
+                data_class.setNightTime(s.substring(0,c).toInt(), s.substring(c+1).toInt());
+                data_class.getNightTime(display->night);
+            }
+            break;
+        }
+        case 5:  data_class.setTargetTemp(atof(data)); break;
+        case 6:  data_class.setTempTolerance(atof(data)); break;
+        case 7:  data_class.setTargetHumid(atof(data)); break;
+        case 8:  data_class.setHumidTolerance(atof(data)); break;
+        case 9:  data_class.setTargetSoil(atof(data)); break;
+        case 10: data_class.setPumpDuration(atof(data)); break;
+        case 11: data_class.setAbsorptionDelay(atof(data)); break;
+        case 12: data_class.setSoilTolerance(atof(data)); break;
+        case 13: data_class.setSoilLow(atoi(data)); break;
+        case 14: data_class.setSoilUpper(atoi(data)); break;
+        case 15: data_class.setPumpFlow(atof(data)); break;
+        case 16: data_class.setSoilBehavior((int)atof(data)); break;
+        case 17: data_class.setWaterRawReading(atof(data)); break;
+        case 18: data_class.setWaterCapacity(atof(data)); break;
+        case 19: ota.setVersion(data); break;
+        case 20: data_class.setIsRunning(strcmp(data, "true") == 0); break;
+    }
+}
+
+// ── initClasses / initModules ─────────────────────────────────────────────────
+void initClasses()
+{
+    tft       = new TFT_eSPI();
     button[0] = new Button(BTN1);
     button[1] = new Button(BTN2);
     button[2] = new Button(BTN3);
     button[3] = new Button(BTN4);
-    display = new Display(tft, firebase, &rtc, &ota, &wifi, button, &data_class); 
+    display   = new Display(tft, firebase, &rtc, &ota, &wifi, button, &data_class);
     wifi.injectDisplay(display);
 }
 
-void initModules() {
+void initModules()
+{
     display->initDisplay();
     firebase = new FBase(API_KEY, DATABASE_URL, wifi.getEmail(), wifi.getPass());
     display->injectFBase(firebase);
@@ -86,90 +144,72 @@ void initModules() {
         button[i]->init();
 }
 
-void getNow() {
+// ── getNow ────────────────────────────────────────────────────────────────────
+void getNow()
+{
     now.tm_hour = rtc.getHour();
-    now.tm_min = rtc.getMinute();
-    now.tm_sec = rtc.getSecond();
+    now.tm_min  = rtc.getMinute();
+    now.tm_sec  = rtc.getSecond();
     now.tm_mday = rtc.getDay();
-    now.tm_mon = rtc.getMonth();
+    now.tm_mon  = rtc.getMonth();
     now.tm_year = rtc.getYear();
     rtc.checkSync();
 }
 
+// ── sendDataStartUP ───────────────────────────────────────────────────────────
 void sendDataStartUP()
 {
     float lightValue = data_class.getIsRunning() ? light.getStatus() : 0;
-    uint8_t arrID[10] = {TT, TTOL, TH, HTOL, TS, STOL, PD, AD, LIGHT0, STATUS0};
-    float arrVal[10] = {
-        data_class.getTargetTemp(), 
-        data_class.getTempTolerance(), 
-        data_class.getTargetHumid(), 
+    uint8_t arrID[10]  = {TT, TTOL, TH, HTOL, TS, STOL, PD, AD, LIGHT0, STATUS0};
+    float   arrVal[10] = {
+        data_class.getTargetTemp(),
+        data_class.getTempTolerance(),
+        data_class.getTargetHumid(),
         data_class.getHumidTolerance(),
-        data_class.getTargetSoil(), 
-        data_class.getSoilTolerance(), 
-        data_class.getPumpDuration(), 
+        data_class.getTargetSoil(),
+        data_class.getSoilTolerance(),
+        data_class.getPumpDuration(),
         data_class.getAbsorptionDelay(),
-        lightValue, 
+        lightValue,
         (float)data_class.getIsRunning()
     };
-    
-    const int count = sizeof(arrID) / sizeof(arrID[0]);
-    
-    for (int i = 0; i < count; i++) {
-        esp_task_wdt_reset();    
+
+    for (int i = 0; i < 10; i++) {
+        esp_task_wdt_reset();
         sendPacket(arrID[i], arrVal[i]);
         delay(500);
     }
     sendPacket(PUMP_CAL, false);
 }
 
-void formatDate(String *date, int period) {
-    int colonIndex = date->indexOf(':');
-    if (colonIndex == -1) return;
-   
-    float hour = date->substring(0, colonIndex).toFloat();
-    float minute = date->substring(colonIndex + 1).toFloat();
-
-    if(period == DAY)
-        data_class.setDayTime(hour, minute);
-    if(period == NIGHT)
-        data_class.setNightTime(hour, minute);
-}
-
-void applyReceivedData(int i, const String& data)
+// ── receiveFirebaseData ───────────────────────────────────────────────────────
+// Usa buffer fixo — zero alocação dinâmica de String no loop
+void receiveFirebaseData()
 {
-    switch (i) {
-        case 0:  ota.setBinaryPath(data); break;
-        case 1:  ota.setToken(data); break;
-        case 2:  ota.setHasUpdate(data == "true"); break;
-        case 3:  formatDate(const_cast<String*>(&data), DAY);  data_class.getDayTime(display->day); break;
-        case 4:  formatDate(const_cast<String*>(&data), NIGHT); data_class.getNightTime(display->night); break;
-        case 5:  data_class.setTargetTemp(data.toFloat()); break;
-        case 6:  data_class.setTempTolerance(data.toFloat()); break;
-        case 7:  data_class.setTargetHumid(data.toFloat()); break;
-        case 8:  data_class.setHumidTolerance(data.toFloat()); break;
-        case 9:  data_class.setTargetSoil(data.toFloat()); break;
-        case 10: data_class.setPumpDuration(data.toFloat()); break;
-        case 11: data_class.setAbsorptionDelay(data.toFloat()); break;
-        case 12: data_class.setSoilTolerance(data.toFloat()); break;
-        case 13: data_class.setSoilLow(data.toInt()); break;
-        case 14: data_class.setSoilUpper(data.toInt()); break;
-        case 15: data_class.setPumpFlow(data.toFloat()); break;
-        case 16: data_class.setSoilBehavior(data.toFloat()); break;
-        case 17: data_class.setWaterRawReading(data.toFloat()); break;
-        case 18: data_class.setWaterCapacity(data.toFloat()); break;
-        case 19: ota.setVersion(data); break;
-        case 20: data_class.setIsRunning(data == "true"); break;
+    char dataBuf[256] = {};
+
+    for (int i = 0; i < _pathsCount; i++) {
+        esp_task_wdt_reset();
+
+        if (WiFi.status() != WL_CONNECTED) {
+            Serial.println("[RCV] WiFi perdido, abortando receive.");
+            return;
+        }
+
+        dataBuf[0] = '\0';
+        firebase->awaitGet(buildPath(i), dataBuf, sizeof(dataBuf));
+        applyReceivedData(i, dataBuf);
     }
 }
 
+// ── sendAndReceiveData ────────────────────────────────────────────────────────
 void sendAndReceiveData()
 {
     if (!wifi.getStatus()) return;
 
-    if (ESP.getFreeHeap() < 30000) 
-    {
-        Serial.printf("[HEAP] Baixo (%d), reconectando Firebase...\n", ESP.getFreeHeap());
+    if (ESP.getFreeHeap() < 30000) {
+        Serial.printf("[HEAP] Baixo (%lu), reconectando Firebase...\n",
+                      (unsigned long)ESP.getFreeHeap());
         if (firebase->isBusy()) return;
         firebase->stopApp();
         delay(1000);
@@ -177,9 +217,8 @@ void sendAndReceiveData()
         return;
     }
 
-    if (!firebase->isHealthy()) 
-    {
-        if (firebase->isBusy()) return; // não fecha enquanto há operação pendente
+    if (!firebase->isHealthy()) {
+        if (firebase->isBusy()) return;
         firebase->stopApp();
         delay(500);
         firebase->init();
@@ -187,41 +226,28 @@ void sendAndReceiveData()
     }
 
     if (!firebase || !firebase->isReady()) return;
-
-    if (ESP.getMaxAllocHeap() < 20000) {
-        return;
-    }
+    if (ESP.getMaxAllocHeap() < 20000) return;
 
     esp_task_wdt_reset();
 
-    // ── FASE RECEIVE (processa 1 path por chamada) ──────────────────
+    // ── FASE RECEIVE incremental (1 path por chamada) ─────────────────
     if (_rcvActive) {
         if (WiFi.status() != WL_CONNECTED) {
-            // WiFi caiu durante receive, aborta limpamente
             _rcvActive = false;
             _rcvIndex  = -1;
             return;
         }
 
         if (_rcvIndex < _pathsCount) {
-            char pathBuf[128];
-            if (_paths[_rcvIndex].needsPrefix)
-                snprintf(pathBuf, sizeof(pathBuf), "%s%s", safeEmail.c_str(), _paths[_rcvIndex].path);
-            else
-                snprintf(pathBuf, sizeof(pathBuf), "%s", _paths[_rcvIndex].path);
-
-            String fullPath(pathBuf);
-            String data;
-            data.reserve(64);
-            firebase->awaitGet(fullPath, &data);
+            char dataBuf[256] = {};
+            firebase->awaitGet(buildPath(_rcvIndex), dataBuf, sizeof(dataBuf));
             esp_task_wdt_reset();
-            applyReceivedData(_rcvIndex, data);
+            applyReceivedData(_rcvIndex, dataBuf);
             esp_task_wdt_reset();
             _rcvIndex++;
         } else {
-            // Terminou todos os paths
-            String temp = "false";
-            firebase->aSyncSetString(safeEmail + "/HasChange", temp);
+            // Concluiu todos os paths
+            firebase->aSyncSetString(safeEmail + "/HasChange", String("false"));
             data_class.setHasChange("false");
             _rcvActive = false;
             _rcvIndex  = -1;
@@ -229,7 +255,7 @@ void sendAndReceiveData()
         return;
     }
 
-    // ── FASE SEND (throttle 30s) ─────────────────────────────────────
+    // ── FASE SEND (throttle 30s) ──────────────────────────────────────
     static unsigned long lastSend = 0;
     if (millis() - lastSend >= 30000) {
         lastSend = millis();
@@ -238,6 +264,7 @@ void sendAndReceiveData()
             static float last_sensors[4] = {-1,-1,-1,-1};
             static bool  last_act[6]     = {false,false,false,false,false,false};
 
+            // Paths como literais — sem alocação
             static const char* spaths[4] = {
                 "/Readings/Sensor/Temperature",
                 "/Readings/Sensor/Humidity",
@@ -253,24 +280,30 @@ void sendAndReceiveData()
                 "/Readings/Actuator/DehumidStatus"
             };
 
-            float sens[4] = {data_class.getTemp(), data_class.getHumid(),
-                             data_class.getCalibratedSoil(), data_class.getWaterCalibrated()};
-            bool  acts[6] = {data_class.getLightStatus(), data_class.getPumpStatus(),
-                             data_class.getCoolerStatus(), data_class.getHeaterStatus(),
-                             data_class.getHumidStatus(), data_class.getDehumidStatus()};
+            float sens[4] = {
+                data_class.getTemp(), data_class.getHumid(),
+                data_class.getCalibratedSoil(), data_class.getWaterCalibrated()
+            };
+            bool acts[6] = {
+                data_class.getLightStatus(), data_class.getPumpStatus(),
+                data_class.getCoolerStatus(), data_class.getHeaterStatus(),
+                data_class.getHumidStatus(), data_class.getDehumidStatus()
+            };
 
+            // Monta path em buffer fixo — sem String temporária no loop
+            char fullPath[128];
             for (int i = 0; i < 4; i++) {
                 if (sens[i] != last_sensors[i]) {
-                    String p = safeEmail + spaths[i];
-                    firebase->aSyncSetFloat(p, sens[i]);
+                    snprintf(fullPath, sizeof(fullPath), "%s%s", safeEmail.c_str(), spaths[i]);
+                    firebase->aSyncSetFloat(fullPath, sens[i]);
                     last_sensors[i] = sens[i];
                     esp_task_wdt_reset();
                 }
             }
             for (int j = 0; j < 6; j++) {
                 if (acts[j] != last_act[j]) {
-                    String p = safeEmail + apaths[j];
-                    firebase->aSyncSetBool(p, acts[j]);
+                    snprintf(fullPath, sizeof(fullPath), "%s%s", safeEmail.c_str(), apaths[j]);
+                    firebase->aSyncSetBool(fullPath, acts[j]);
                     last_act[j] = acts[j];
                     esp_task_wdt_reset();
                 }
@@ -278,48 +311,24 @@ void sendAndReceiveData()
         }
     }
 
-    // ── VERIFICAR HasChange ──────────────────────────────────────────
+    // ── VERIFICAR HasChange (throttle 15s) ────────────────────────────
     static unsigned long lastHasChangeCheck = 0;
     if (millis() - lastHasChangeCheck < 15000) return;
     lastHasChangeCheck = millis();
 
-    String hasChange;
-    hasChange.reserve(8);
-    firebase->awaitGet(safeEmail + "/HasChange", &hasChange);
-    data_class.setHasChange(hasChange);
+    char hcBuf[16] = {};
+    char hcPath[128];
+    snprintf(hcPath, sizeof(hcPath), "%s/HasChange", safeEmail.c_str());
+    firebase->awaitGet(hcPath, hcBuf, sizeof(hcBuf));
+    data_class.setHasChange(String(hcBuf));
 
-    if (hasChange == "true") {
+    if (strcmp(hcBuf, "true") == 0) {
         _rcvActive = true;
         _rcvIndex  = 0;
     }
 }
 
-void receiveFirebaseData()
-{
-    for(int i = 0; i < _pathsCount; i++)
-    {
-        esp_task_wdt_reset();
-
-        if (WiFi.status() != WL_CONNECTED) {
-            Serial.println("[RCV] WiFi perdido durante receive, abortando.");
-            return;
-        }
-
-        char pathBuf[128];
-        if (_paths[i].needsPrefix)
-            snprintf(pathBuf, sizeof(pathBuf), "%s%s", safeEmail.c_str(), _paths[i].path);
-        else
-            snprintf(pathBuf, sizeof(pathBuf), "%s", _paths[i].path);
-
-        String fullPath(pathBuf);
-        String data;
-        data.reserve(64);
-        firebase->awaitGet(fullPath, &data);
-
-        applyReceivedData(i, data);
-    }
-}
-
+// ── ButtonIdle ────────────────────────────────────────────────────────────────
 void ButtonIdle()
 {
     static int brightness = 255;
@@ -328,11 +337,10 @@ void ButtonIdle()
 
     esp_task_wdt_reset();
 
-    bool idle = button[0]->getIdle() && button[1]->getIdle() && 
+    bool idle = button[0]->getIdle() && button[1]->getIdle() &&
                 button[2]->getIdle() && button[3]->getIdle();
 
-    if (idle)
-    {
+    if (idle) {
         esp_task_wdt_reset();
         if (brightness > 0 && millis() - lastStep > stepInterval) {
             lastStep = millis();
@@ -344,16 +352,13 @@ void ButtonIdle()
             if (button[i]->read()) break;
         }
 
-        if (brightness == 0) 
-        {
+        if (brightness == 0) {
             menu = -2;
             sendAndReceiveData();
             esp_task_wdt_reset();
             wifi.loop();
         }
-    }
-    else
-    {
+    } else {
         if (brightness < 255 && millis() - lastStep > stepInterval) {
             lastStep = millis();
             brightness++;
@@ -362,17 +367,23 @@ void ButtonIdle()
     }
 }
 
+// ── initFirebaseStructure ─────────────────────────────────────────────────────
 void initFirebaseStructure()
 {
-    if(wifi.getStatus() == false)
-        return;
-    String status = "";
-    String version = ota.getVersion();
-    firebase->awaitGet(safeEmail + "/Status", &status);
-    firebase->aSyncSetString(safeEmail + "/Version", version);
-    
-    if (status == "true" || status == "false")
-    {
+    if (!wifi.getStatus()) return;
+
+    char statusBuf[16] = {};
+    char statusPath[128];
+    snprintf(statusPath, sizeof(statusPath), "%s/Status", safeEmail.c_str());
+
+    String statusPathStr(statusPath);
+    String statusResult;
+    firebase->awaitGet(statusPathStr, &statusResult);
+
+    String verStr = ota.getVersion();
+    firebase->aSyncSetString(safeEmail + "/Version", verStr);
+
+    if (statusResult == "true" || statusResult == "false") {
         display->logoScreen("Dados existentes carregados!");
         delay(500);
         return;
@@ -381,61 +392,39 @@ void initFirebaseStructure()
     display->logoScreen("Primeiro acesso, criando estrutura...");
     esp_task_wdt_reset();
 
-    bool running = false;
-    firebase->aSyncSetBool(safeEmail + "/Status", running);
-    
-    String emailStr = wifi.getEmail();
-    firebase->aSyncSetString(safeEmail + "/email", emailStr);
-
-    String ver = ota.getVersion();
-    firebase->aSyncSetString(safeEmail + "/Version", ver);
-    
-    String hourOn = "08:00";
-    String hourOff = "22:00";
-    firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hourOn);
-    firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hourOff);
-    esp_task_wdt_reset();
-    
-    float targetTemp = data_class.getTargetTemp();
-    float tempTol = data_class.getTempTolerance();
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp", targetTemp);
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", tempTol);
-    
-    float targetHumid = data_class.getTargetHumid();
-    float humidTol = data_class.getHumidTolerance();
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid", targetHumid);
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance", humidTol);
-    esp_task_wdt_reset();
-    
-    float targetSoil = data_class.getTargetSoil();
-    float soilTol = data_class.getSoilTolerance();
-    float pumpDur = data_class.getPumpDuration();
-    float absDelay = data_class.getAbsorptionDelay();
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil", targetSoil);
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance", soilTol);
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", pumpDur);
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", absDelay);
+    firebase->aSyncSetBool  (safeEmail + "/Status", false);
+    firebase->aSyncSetString(safeEmail + "/email",   wifi.getEmail());
+    firebase->aSyncSetString(safeEmail + "/Version", verStr);
+    firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn",  String("08:00"));
+    firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", String("22:00"));
     esp_task_wdt_reset();
 
-    float soilDry = data_class.getSoilLow();
-    float soilWet = data_class.getSoilUpper();
-    float pumpFlow = data_class.getPumpFlow();
-    float behavior = data_class.getSoilBehavior();
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/SoilSensor/Dry", soilDry);
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/SoilSensor/Wet", soilWet);
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow", pumpFlow);
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Behavior", behavior);
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp",    data_class.getTargetTemp());
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", data_class.getTempTolerance());
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid",         data_class.getTargetHumid());
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance",      data_class.getHumidTolerance());
     esp_task_wdt_reset();
 
-    float reserv = data_class.getWaterRawReading();
-    float capacity = data_class.getWaterCapacity();
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/WaterReserv/Calibration/Reserv", reserv);
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/WaterReserv/Calibration/Capacity", capacity);
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil",       data_class.getTargetSoil());
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance",    data_class.getSoilTolerance());
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration",     data_class.getPumpDuration());
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay",  data_class.getAbsorptionDelay());
+    esp_task_wdt_reset();
+
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/SoilSensor/Dry",  (float)data_class.getSoilLow());
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/SoilSensor/Wet",  (float)data_class.getSoilUpper());
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow",   data_class.getPumpFlow());
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Behavior",        (float)data_class.getSoilBehavior());
+    esp_task_wdt_reset();
+
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/WaterReserv/Calibration/Reserv",   data_class.getWaterRawReading());
+    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/WaterReserv/Calibration/Capacity", data_class.getWaterCapacity());
 
     display->logoScreen("Estrutura criada com sucesso!");
     delay(1000);
 }
 
+// ── wdt_conf ──────────────────────────────────────────────────────────────────
 void wdt_conf()
 {
     esp_task_wdt_deinit();
@@ -443,120 +432,112 @@ void wdt_conf()
     esp_task_wdt_add(NULL);
 }
 
+// ── firebase_healthy_startup ──────────────────────────────────────────────────
 void firebase_healthy_startup()
 {
-    if(firebase->init() && firebase->isReady() && firebase->isHealthy())
-    {
-        const int MAX_ATTEMPTS = 3;
-        const unsigned long OP_TIMEOUT = 20000;
+    if (!firebase->init() || !firebase->isReady() || !firebase->isHealthy()) return;
 
-        bool structureOk = false;
-        bool receiveOk   = false;
+    const int MAX_ATTEMPTS = 3;
+    const unsigned long OP_TIMEOUT = 20000;
+    bool structureOk = false;
+    bool receiveOk   = false;
 
-        for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++)
-        {
+    for (int attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+        esp_task_wdt_reset();
+
+        if (!structureOk) {
+            unsigned long t = millis();
+            display->logoScreen("Carregando estrutura... (" + String(attempt) + "/" + String(MAX_ATTEMPTS) + ")");
+            initFirebaseStructure();
             esp_task_wdt_reset();
-
-            if (!structureOk)
-            {
-                unsigned long t = millis();
-                display->logoScreen("Carregando estrutura... (" + String(attempt) + "/" + String(MAX_ATTEMPTS) + ")");
-                initFirebaseStructure();
-                esp_task_wdt_reset();
-
-                if (millis() - t < OP_TIMEOUT)
-                    structureOk = true;
-                else
-                    continue;
-            }
-
-            if (structureOk && !receiveOk)
-            {
-                unsigned long t = millis();
-                display->logoScreen("Recebendo dados... (" + String(attempt) + "/" + String(MAX_ATTEMPTS) + ")");
-                receiveFirebaseData();
-                esp_task_wdt_reset();
-
-                if (millis() - t < OP_TIMEOUT)
-                    receiveOk = true;
-                else
-                    continue;
-            }
-
-            if (structureOk && receiveOk)
-                break;
+            structureOk = (millis() - t < OP_TIMEOUT);
+            if (!structureOk) continue;
         }
 
-        if (!structureOk || !receiveOk)
-        {
-            display->logoScreen("Falha na inicializacao, reiniciando...");
-            delay(2000);
-            // Só reinicia se WiFi ainda está OK — senão continua com valores padrão
-            if (WiFi.status() == WL_CONNECTED)
-                ESP.restart();
+        if (!receiveOk) {
+            unsigned long t = millis();
+            display->logoScreen("Recebendo dados... (" + String(attempt) + "/" + String(MAX_ATTEMPTS) + ")");
+            receiveFirebaseData();
+            esp_task_wdt_reset();
+            receiveOk = (millis() - t < OP_TIMEOUT);
+            if (!receiveOk) continue;
         }
 
-        display->logoScreen("Conectado ao banco de dados!");
+        if (structureOk && receiveOk) break;
     }
+
+    if (!structureOk || !receiveOk) {
+        display->logoScreen("Falha na inicializacao, continuando...");
+        delay(2000);
+        // Reinicia apenas se o problema é no Firebase, não na rede
+        if (WiFi.status() == WL_CONNECTED)
+            ESP.restart();
+    }
+
+    display->logoScreen("Conectado ao banco de dados!");
 }
 
+// ── heapMonitor ───────────────────────────────────────────────────────────────
 void heapMonitor()
 {
     static unsigned long lastHeapLog = 0;
-    if (millis() - lastHeapLog > 30000)
-    {
-        lastHeapLog = millis();
-        uint32_t freeHeap = ESP.getFreeHeap();
-        uint32_t maxBlock = ESP.getMaxAllocHeap();
+    if (millis() - lastHeapLog < 30000) return;
+    lastHeapLog = millis();
 
-        Serial.printf("[HEAP] Free: %d | Min ever: %d | Max block: %d\n",
-            freeHeap, ESP.getMinFreeHeap(), maxBlock);
+    uint32_t freeHeap = ESP.getFreeHeap();
+    uint32_t maxBlock = ESP.getMaxAllocHeap();
 
-        // Fragmentação severa: heap livre mas sem bloco contíguo grande
-        if (freeHeap > 20000 && maxBlock < 10000) {
-            Serial.println("[HEAP] Fragmentacao critica, reiniciando...");
-            delay(500);
-            ESP.restart();
-        }
+    Serial.printf("[HEAP] Free: %lu | Min: %lu | MaxBlock: %lu\n",
+        (unsigned long)freeHeap,
+        (unsigned long)ESP.getMinFreeHeap(),
+        (unsigned long)maxBlock);
 
-        // Heap criticamente baixo
-        if (freeHeap < 15000) {
-            Serial.println("[HEAP] Heap critico, reiniciando...");
-            delay(500);
-            ESP.restart();
-        }
+    // Fragmentação crítica: livre mas sem bloco contíguo
+    if (freeHeap > 20000 && maxBlock < 10000) {
+        Serial.println("[HEAP] Fragmentacao critica, reiniciando...");
+        delay(500);
+        ESP.restart();
+    }
+
+    if (freeHeap < 15000) {
+        Serial.println("[HEAP] Heap critico, reiniciando...");
+        delay(500);
+        ESP.restart();
     }
 }
 
-void setup() 
+// ── setup ─────────────────────────────────────────────────────────────────────
+void setup()
 {
     wdt_conf();
     initClasses();
     initModules();
+
     display->logoScreen("Inicializando sistemas de armazenamento...");
     delay(1000);
+
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
         nvs_flash_erase();
         nvs_flash_init();
     }
+
     Serial.begin(115200);
     display->logoScreen("Ajustando protocolos de comunicacao...");
     delay(500);
+
     Serial2.begin(9600, SERIAL_8N1, UART_RX, UART_TX);
     Serial2.flush();
-    
+
     display->logoScreen("Inicializando equipamento...");
     delay(500);
     light.setTimeFunction(getNow);
 
     wifi.ensureCredentialsLoaded();
 
-    if(wifi.checkCredentials())
-    {
+    if (wifi.checkCredentials()) {
         display->logoScreen("Tentando conectar a: " + wifi.getSSID());
-        if(wifi.wifiInit())
-        {
+        if (wifi.wifiInit()) {
             rtc.begin();
             display->logoScreen("Conectado a internet!");
             delay(500);
@@ -564,34 +545,33 @@ void setup()
         }
 
         safeEmail = wifi.getEmail();
-        safeEmail.replace(".","_");
-        
+        safeEmail.replace(".", "_");
+
         firebase_healthy_startup();
-    }
-    else
-    {
-        display->logoScreen("Internet nao configurada, prosseguindo para menu de configuracao");
+    } else {
+        display->logoScreen("Internet nao configurada, indo para configuracao");
         menu = 6;
     }
 
-    if(!wifi.getStatus() && !rtc.getStatus())
-        display->logoScreen("Iniciando! Aguarde! Internet nao conectada, sem relogio!");
+    if (!wifi.getStatus() && !rtc.getStatus())
+        display->logoScreen("Iniciando! Internet nao conectada, sem relogio!");
     else
         display->logoScreen("Iniciando! Aguarde!");
 
     sendDataStartUP();
-    
+
     display->logoScreen("Versao: " + ota.getVersion());
     delay(1000);
     ota.fetchReleaseInfo();
 }
 
-void loop() 
+// ── loop ──────────────────────────────────────────────────────────────────────
+void loop()
 {
     esp_task_wdt_reset();
     heapMonitor();
 
-    if(wifi.getStatus() && rtc.getStatus())
+    if (wifi.getStatus() && rtc.getStatus())
         getNow();
 
     // Reconecta Firebase se WiFi voltou mas Firebase não está saudável
@@ -600,68 +580,38 @@ void loop()
         delay(100);
         firebase->init();
     }
-    
+
     ButtonIdle();
 
+    // Leitura serial — janela de 50ms para não bloquear
     unsigned long serialStart = millis();
-    while(Serial2.available() >= 5 && millis() - serialStart < 50) {
+    while (Serial2.available() >= 5 && millis() - serialStart < 50)
         readPacket(&data_class);
-    }
-    
+
     float lightValue = data_class.getIsRunning() ? light.getStatus() : 0;
     sendPacket(LIGHT0, lightValue);
-    
     light.run(data_class.getIsRunning());
 
     static int last_menu = -2;
+    if (menu < -1) menu = -1;
 
-    if (menu < -1)
-        menu = -1;
-
-    if(last_menu != menu)
-    {
+    if (last_menu != menu) {
         display->drawBackGround();
         last_menu = menu;
     }
 
-    switch (menu)
-    {
-        case -1:
-            display->mainScreen(&menu);
+    switch (menu) {
+        case -1: display->mainScreen(&menu);        break;
+        case  0: display->monitorMenu(&menu);       break;
+        case  1: display->lightMenu(&menu);         break;
+        case  2: display->tempMenu(&menu);          break;
+        case  3: display->humidMenu(&menu);         break;
+        case  4:
+            if (data_class.getSoilBehavior() == SENSOR) display->soilMenuSensor(&menu);
+            if (data_class.getSoilBehavior() == TIMER)  display->soilMenuTimer(&menu);
             break;
-        
-        case 0:
-            display->monitorMenu(&menu);
-            break;
-    
-        case 1:
-            display->lightMenu(&menu);
-            break;
-    
-        case 2:
-            display->tempMenu(&menu); 
-            break;
-        
-        case 3:
-            display->humidMenu(&menu);
-            break;
-        
-        case 4:
-            if(data_class.getSoilBehavior() == SENSOR)
-                display->soilMenuSensor(&menu);
-            if(data_class.getSoilBehavior() == TIMER)
-                display->soilMenuTimer(&menu);
-            break;
-        
-        case 5:
-            display->calibrationScreen(&menu);            
-            break;
-        
-        case 6:
-            display->setupScreen(&menu);
-            break;
-
-        default:
-            break;
+        case  5: display->calibrationScreen(&menu); break;
+        case  6: display->setupScreen(&menu);       break;
+        default: break;
     }
 }
