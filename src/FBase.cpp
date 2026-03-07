@@ -63,6 +63,7 @@ bool FBase::init() {
             app.loop();
         }
         
+        esp_task_wdt_reset();
         yield();
     }
     
@@ -88,6 +89,7 @@ bool FBase::stopApp()
     unsigned long drainStart = millis();
     while (isBusy() && millis() - drainStart < 500) {
         app.loop();
+        esp_task_wdt_reset();
         yield();
     }
 
@@ -117,6 +119,7 @@ bool FBase::stopApp()
             lastCheckTime = currentTime;
         }
         
+        esp_task_wdt_reset();
         yield();
     }
     
@@ -359,6 +362,7 @@ void FBase::awaitGet(String& path, String *result)
     while (retries > 0) {
         if (WiFi.status() != WL_CONNECTED) return;
 
+        esp_task_wdt_reset();
         unsigned long startTime = millis();
         *result = Database.get<String>(aClient, path.c_str());
         
@@ -375,6 +379,7 @@ void FBase::awaitGet(String& path, String *result)
         
         unsigned long delayStart = millis();
         while (millis() - delayStart < 300) {
+            esp_task_wdt_reset();
             yield();
         }
     }
