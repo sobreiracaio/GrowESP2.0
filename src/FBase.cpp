@@ -40,13 +40,12 @@ bool FBase::init() {
     unsigned long startTime = millis();
     unsigned long lastLoopTime = 0;
     
-    ssl_client.setTimeout(5);
-    
     if (ssl_client.connected()) {
         ssl_client.stop();
     }
     
     ssl_client.setInsecure();
+    ssl_client.setTimeout(15000);
     
     initializeApp(aClient, app, getAuth(user_auth), processData, "authTask");
     
@@ -128,8 +127,8 @@ bool FBase::stopApp()
 void FBase::loop() {
     if (!authenticated || !app.ready()) return;
     
-    if (!ssl_client.connected() && WiFi.status() != WL_CONNECTED) {
-        // Cancela operações pendentes antes de marcar como não autenticado
+    // Cancela se SSL caiu OU WiFi caiu
+    if (!ssl_client.connected() || WiFi.status() != WL_CONNECTED) {
         if (isBusy()) {
             _pendingFloat  = false;
             _pendingString = false;
@@ -139,15 +138,16 @@ void FBase::loop() {
         authenticated = false;
         return;
     }
-    
-    if (ssl_client.connected()) 
-    {
-        ssl_client.setTimeout(5);
-    }
 
     unsigned long before = millis();
     app.loop();
     if (millis() - before > 5000) {
+        if (isBusy()) {
+            _pendingFloat  = false;
+            _pendingString = false;
+            _pendingBool   = false;
+            _lastBoolSet   = false;
+        }
         authenticated = false;
         ssl_client.stop();
         return;
@@ -242,7 +242,7 @@ void FBase::aSyncSetString(String path, String value)
     unsigned long lastYield = millis();
 
     while (_pendingString && millis() - timeout < 3000) {
-        if (WiFi.status() != WL_CONNECTED) {
+        if (WiFi.status() != WL_CONNECTED || !authenticated) {
             _pendingString      = false;
             _lastStringPath[0]  = '\0';
             _lastStringValue[0] = '\0';
@@ -284,7 +284,7 @@ void FBase::aSyncSetFloat(String path, float value)
     unsigned long lastYield = millis();
 
     while (_pendingFloat && millis() - timeout < 3000) {
-        if (WiFi.status() != WL_CONNECTED) {
+        if (WiFi.status() != WL_CONNECTED || !authenticated) {
             _pendingFloat     = false;
             _lastFloatPath[0] = '\0';
             _lastFloatValue   = -9999.0f;
@@ -328,7 +328,7 @@ void FBase::aSyncSetBool(String path, bool value)
     unsigned long lastYield = millis();
 
     while (_pendingBool && millis() - timeout < 3000) {
-        if (WiFi.status() != WL_CONNECTED) {
+        if (WiFi.status() != WL_CONNECTED || !authenticated) {
             _pendingBool = false;
             _lastBoolSet = false;
             return;
@@ -416,4 +416,34 @@ void FBase::awaitSet(String &path, String value, int type)
             }
         }
     }
+}
+
+// ── Sobrecargas const char* — convertem e delegam para as versões String ──────
+
+void FBase::awaitGet(const char* path, char* result, unsigned int resultSize)
+{
+    if (!path || !result || resultSize == 0) return;
+    String pathStr(path);
+    String resultStr;
+    awaitGet(pathStr, &resultStr);
+    strncpy(result, resultStr.c_str(), resultSize - 1);
+    result[resultSize - 1] = '\0';
+}
+
+void FBase::aSyncSetString(const char* path, const char* value)
+{
+    if (!path || !value) return;
+    aSyncSetString(String(path), String(value));
+}
+
+void FBase::aSyncSetFloat(const char* path, float value)
+{
+    if (!path) return;
+    aSyncSetFloat(String(path), value);
+}
+
+void FBase::aSyncSetBool(const char* path, bool value)
+{
+    if (!path) return;
+    aSyncSetBool(String(path), value);
 }
