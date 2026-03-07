@@ -206,25 +206,6 @@ void receiveFirebaseData()
 void sendAndReceiveData()
 {
     if (!wifi.getStatus()) return;
-
-    if (ESP.getFreeHeap() < 30000) {
-        Serial.printf("[HEAP] Baixo (%lu), reconectando Firebase...\n",
-                      (unsigned long)ESP.getFreeHeap());
-        if (firebase->isBusy()) return;
-        firebase->stopApp();
-        delay(1000);
-        firebase->init();
-        return;
-    }
-
-    if (!firebase->isHealthy()) {
-        if (firebase->isBusy()) return;
-        firebase->stopApp();
-        delay(500);
-        firebase->init();
-        return;
-    }
-
     if (!firebase || !firebase->isReady()) return;
     if (ESP.getMaxAllocHeap() < 20000) return;
 
@@ -435,7 +416,28 @@ void wdt_conf()
 // ── firebase_healthy_startup ──────────────────────────────────────────────────
 void firebase_healthy_startup()
 {
-    if (!firebase->init() || !firebase->isReady() || !firebase->isHealthy()) return;
+    // Tenta conectar ao Firebase com backoff: 2s → 4s → 8s (3 tentativas)
+    const int MAX_INIT_ATTEMPTS = 3;
+    unsigned long backoff = 2000;
+    bool initOk = false;
+
+    for (int i = 1; i <= MAX_INIT_ATTEMPTS; i++) {
+        esp_task_wdt_reset();
+        display->logoScreen("Conectando Firebase... (" + String(i) + "/" + String(MAX_INIT_ATTEMPTS) + ")");
+        initOk = firebase->init() && firebase->isReady() && firebase->isHealthy();
+        if (initOk) break;
+
+        Serial.printf("[Firebase] init() falhou (tentativa %d). Aguardando %lus...\n", i, backoff / 1000);
+        unsigned long w = millis();
+        while (millis() - w < backoff) { esp_task_wdt_reset(); yield(); }
+        backoff *= 2;
+    }
+
+    if (!initOk) {
+        display->logoScreen("Firebase indisponivel. Continuando offline...");
+        delay(2000);
+        return; // Sobe sem Firebase — firebaseReconnectLoop() cuida do resto
+    }
 
     const int MAX_ATTEMPTS = 3;
     const unsigned long OP_TIMEOUT = 20000;
@@ -495,13 +497,13 @@ void heapMonitor()
     // Fragmentação crítica: livre mas sem bloco contíguo
     if (freeHeap > 20000 && maxBlock < 10000) {
         Serial.println("[HEAP] Fragmentacao critica, reiniciando...");
-        delay(500);
+        Serial.flush();
         ESP.restart();
     }
 
     if (freeHeap < 15000) {
         Serial.println("[HEAP] Heap critico, reiniciando...");
-        delay(500);
+        Serial.flush();
         ESP.restart();
     }
 }
@@ -565,6 +567,70 @@ void setup()
     ota.fetchReleaseInfo();
 }
 
+// ── firebaseReconnectLoop ─────────────────────────────────────────────────────
+// Ponto único de reconexão Firebase. Backoff exponencial: 2s → 4s → 8s → ... → 64s
+// Evita martelo no servidor quando Firebase está fora (não o WiFi).
+void firebaseReconnectLoop()
+{
+    if (!wifi.getStatus() || !firebase) return;
+    if (firebase->isBusy()) return;
+
+    static unsigned long _lastAttempt   = 0;
+    static unsigned long _backoff       = 2000;  // começa em 2s
+    static bool          _waitingToInit = false;
+
+    // ── Heap baixo: força reconexão imediata ──────────────────────────
+    bool heapLow = ESP.getFreeHeap() < 30000;
+    if (heapLow && firebase->isHealthy()) {
+        Serial.printf("[HEAP] Baixo (%lu), forcando reconexao Firebase...\n",
+                      (unsigned long)ESP.getFreeHeap());
+        esp_task_wdt_reset();
+        firebase->stopApp();
+        esp_task_wdt_reset();
+        _waitingToInit = true;
+        _lastAttempt   = millis();
+        _backoff       = 2000;
+        return;
+    }
+
+    // ── Firebase saudável: reseta backoff ─────────────────────────────
+    if (firebase->isHealthy()) {
+        _backoff       = 2000;
+        _waitingToInit = false;
+        return;
+    }
+
+    // ── Firebase não saudável: inicia espera se ainda não iniciou ─────
+    if (!_waitingToInit) {
+        esp_task_wdt_reset();
+        firebase->stopApp();
+        esp_task_wdt_reset();
+        _waitingToInit = true;
+        _lastAttempt   = millis();
+        Serial.printf("[Firebase] Reconectando em %lus...\n", _backoff / 1000);
+        return;
+    }
+
+    // ── Aguarda backoff antes de tentar init ──────────────────────────
+    if (millis() - _lastAttempt < _backoff) return;
+
+    Serial.println("[Firebase] Tentando reconectar...");
+    esp_task_wdt_reset();
+    bool ok = firebase->init();
+    esp_task_wdt_reset();
+
+    if (ok) {
+        Serial.println("[Firebase] Reconectado com sucesso!");
+        _backoff       = 2000; // reseta backoff
+        _waitingToInit = false;
+    } else {
+        // Backoff exponencial com teto de 64s
+        _backoff = min(_backoff * 2, (unsigned long)64000);
+        _lastAttempt = millis();
+        Serial.printf("[Firebase] Falha. Proxima tentativa em %lus.\n", _backoff / 1000);
+    }
+}
+
 // ── loop ──────────────────────────────────────────────────────────────────────
 void loop()
 {
@@ -574,19 +640,32 @@ void loop()
     if (wifi.getStatus() && rtc.getStatus())
         getNow();
 
-    // Reconecta Firebase se WiFi voltou mas Firebase não está saudável
-    if (wifi.getStatus() && firebase && !firebase->isHealthy() && !firebase->isBusy()) {
-        firebase->stopApp();
-        delay(100);
-        firebase->init();
-    }
+    firebaseReconnectLoop();
 
     ButtonIdle();
 
     // Leitura serial — janela de 50ms para não bloquear
-    unsigned long serialStart = millis();
-    while (Serial2.available() >= 5 && millis() - serialStart < 50)
-        readPacket(&data_class);
+    {
+        static unsigned long lastPacketTime = 0;
+        unsigned long serialStart = millis();
+        bool gotPacket = false;
+
+        while (Serial2.available() >= 5 && millis() - serialStart < 50) {
+            readPacket(&data_class);
+            gotPacket = true;
+        }
+
+        if (gotPacket) {
+            lastPacketTime = millis();
+        } else if (lastPacketTime > 0 && millis() - lastPacketTime > 120000) {
+            // Sem pacote por 2 minutos — sensor pode estar travado
+            // Invalida leituras para não enviar dados velhos ao Firebase
+            Serial.println("[SENSOR] Sem pacotes ha 2min. Invalidando leituras.");
+            data_class.setTemp(-1);
+            data_class.setHumid(-1);
+            lastPacketTime = millis(); // evita spam de log
+        }
+    }
 
     float lightValue = data_class.getIsRunning() ? light.getStatus() : 0;
     sendPacket(LIGHT0, lightValue);

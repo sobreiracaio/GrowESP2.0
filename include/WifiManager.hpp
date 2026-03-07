@@ -20,10 +20,10 @@ class WifiManager {
         String userpass;
 
         bool credentialsLoaded = false;
-        
-       
 
-    
+        // Máquina de estados para reconexão não-bloqueante
+        bool _reconnecting       = false;
+        unsigned long _reconStart = 0;
 
     public:
         WifiManager(Preferences *preferences, Display *tft);
