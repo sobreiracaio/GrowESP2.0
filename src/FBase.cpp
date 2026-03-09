@@ -142,6 +142,35 @@ void FBase::loop() {
         return;
     }
 
+    // ── Detecta padrão de token refresh (múltiplos stop/start SSL em janela curta)
+    // e drena o lwip antes de continuar para evitar corrupção de pbuf acumulada
+    static unsigned long _lastSslState  = 0;
+    static int           _sslDropCount  = 0;
+    static unsigned long _lastDropTime  = 0;
+
+    bool connected = ssl_client.connected();
+    if (!connected && _lastSslState) {
+        // SSL acabou de cair
+        unsigned long now = millis();
+        if (now - _lastDropTime < 5000) {
+            _sslDropCount++;
+        } else {
+            _sslDropCount = 1;
+        }
+        _lastDropTime = now;
+
+        if (_sslDropCount >= 2) {
+            // Padrão de refresh detectado — drena lwip
+            Serial.printf("[Firebase] Refresh SSL detectado (%d drops). Drenando lwip...\n", _sslDropCount);
+            unsigned long drain = millis();
+            while (millis() - drain < 200) {
+                esp_task_wdt_reset();
+                yield();
+            }
+        }
+    }
+    _lastSslState = connected ? 1 : 0;
+
     unsigned long before = millis();
     app.loop();
     if (millis() - before > 5000) {

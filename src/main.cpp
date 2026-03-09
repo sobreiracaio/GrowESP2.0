@@ -28,6 +28,8 @@ struct tm now       = {0};
 String    safeEmail = "";
 int       menu      = -1;
 
+
+
 // ── Receive incremental ───────────────────────────────────────────────────────
 static int  _rcvIndex  = -1;
 static bool _rcvActive = false;
@@ -409,7 +411,7 @@ void initFirebaseStructure()
 void wdt_conf()
 {
     esp_task_wdt_deinit();
-    esp_task_wdt_init(30, false);
+    esp_task_wdt_init(30, true);
     esp_task_wdt_add(NULL);
 }
 
@@ -511,6 +513,7 @@ void heapMonitor()
 // ── setup ─────────────────────────────────────────────────────────────────────
 void setup()
 {
+    
     wdt_conf();
     initClasses();
     initModules();
@@ -634,6 +637,7 @@ void firebaseReconnectLoop()
 // ── loop ──────────────────────────────────────────────────────────────────────
 void loop()
 {
+    
     esp_task_wdt_reset();
     heapMonitor();
 
@@ -693,4 +697,6 @@ void loop()
         case  6: display->setupScreen(&menu);       break;
         default: break;
     }
+
+    
 }
