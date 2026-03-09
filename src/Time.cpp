@@ -91,8 +91,9 @@ int Time::getYear()
 // Método para sincronização NTP periódica
 // =========================
 
-void Time::syncNTP() {
-    configTime(gmtOffsetSec, daylightOffsetSec, ntpServer);
+void Time::syncNTP() 
+{
+    // Não chama configTime() de novo — só atualiza timeinfo
     getLocalTime(&timeinfo);
     lastSyncMillis = millis();
 }
@@ -106,9 +107,12 @@ void Time::checkSync(unsigned long intervalMs) {
 
 bool Time::getStatus()
 {
-    if(begin())
+     // Já sincronizado — não chama begin() de novo
+    if (timeinfo.tm_year > 0)
         return true;
-    return false;
+
+    // Só tenta sincronizar se ainda não tem hora
+    return begin();
 }
 
 void Time::setgmtOffSet(int timezone)
