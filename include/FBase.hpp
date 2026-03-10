@@ -33,6 +33,7 @@ class FBase {
         RealtimeDatabase Database;
 
         bool authenticated;
+        bool _credentialError = false;  // true quando Firebase retorna erro de autenticação (email/senha inválidos)
 
         // flags e cache de operações pendentes
         bool  _pendingFloat  = false;
@@ -64,6 +65,7 @@ class FBase {
         void loop();
         bool isHealthy();
         bool isBusy();
+        bool hasCredentialError();
 
         void awaitGet(String& path, String *result);
         void awaitGet(const char* path, char* result, unsigned int resultSize);

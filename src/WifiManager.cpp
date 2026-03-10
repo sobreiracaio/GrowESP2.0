@@ -114,12 +114,25 @@ void WifiManager::startPortal()
 
     webServer.begin();
 
-    unsigned long previousMillis = 0;
-    const unsigned long interval = 10;
+    unsigned long previousMillis  = 0;
+    const unsigned long interval  = 10;
+    const unsigned long PORTAL_TIMEOUT = 300000UL; // 5 minutos
+    unsigned long portalStart = millis();
 
     while (true) 
     {
         unsigned long currentMillis = millis();
+
+        // Timeout de 5 minutos — reinicia o dispositivo para nova tentativa
+        if (currentMillis - portalStart >= PORTAL_TIMEOUT) {
+            Serial.println("[Portal] Timeout de 5 minutos. Reiniciando...");
+            webServer.stop();
+            dnsServer.stop();
+            WiFi.softAPdisconnect(true);
+            delay(500);
+            ESP.restart();
+        }
+
         if (currentMillis - previousMillis >= interval) 
         {
             previousMillis = currentMillis;

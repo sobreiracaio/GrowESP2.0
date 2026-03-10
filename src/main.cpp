@@ -28,8 +28,6 @@ struct tm now       = {0};
 String    safeEmail = "";
 int       menu      = -1;
 
-
-
 // ── Receive incremental ───────────────────────────────────────────────────────
 static int  _rcvIndex  = -1;
 static bool _rcvActive = false;
@@ -411,7 +409,7 @@ void initFirebaseStructure()
 void wdt_conf()
 {
     esp_task_wdt_deinit();
-    esp_task_wdt_init(30, true);
+    esp_task_wdt_init(30, false);
     esp_task_wdt_add(NULL);
 }
 
@@ -428,6 +426,20 @@ void firebase_healthy_startup()
         display->logoScreen("Conectando Firebase... (" + String(i) + "/" + String(MAX_INIT_ATTEMPTS) + ")");
         initOk = firebase->init() && firebase->isReady() && firebase->isHealthy();
         if (initOk) break;
+
+        // Credenciais inválidas — não adianta tentar de novo, abre portal imediatamente
+        if (firebase->hasCredentialError()) {
+            display->logoScreen("Email ou senha invalidos! Reconfigure...");
+            Serial.println("[Firebase] Credenciais invalidas. Abrindo portal de configuracao.");
+            delay(2000);
+            // Apaga credenciais salvas para forçar reconfiguração
+            prefs.begin("wifi", false);
+            prefs.remove("email");
+            prefs.remove("userpass");
+            prefs.end();
+            wifi.startPortal(); // bloqueia aqui até o usuário salvar (ou timeout de 5min + restart)
+            return;
+        }
 
         Serial.printf("[Firebase] init() falhou (tentativa %d). Aguardando %lus...\n", i, backoff / 1000);
         unsigned long w = millis();
@@ -513,7 +525,6 @@ void heapMonitor()
 // ── setup ─────────────────────────────────────────────────────────────────────
 void setup()
 {
-    
     wdt_conf();
     initClasses();
     initModules();
@@ -637,7 +648,6 @@ void firebaseReconnectLoop()
 // ── loop ──────────────────────────────────────────────────────────────────────
 void loop()
 {
-    
     esp_task_wdt_reset();
     heapMonitor();
 
@@ -697,6 +707,4 @@ void loop()
         case  6: display->setupScreen(&menu);       break;
         default: break;
     }
-
-    
 }
