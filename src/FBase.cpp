@@ -15,6 +15,19 @@ void FBase::processData(AsyncResult &aResult)
     if (aResult.isError())
     {
         Firebase.printf("Error task: %s, msg: %s, code: %d\n", aResult.uid().c_str(), aResult.error().message().c_str(), aResult.error().code());
+
+        // Detecta erro de credencial: INVALID_PASSWORD / EMAIL_NOT_FOUND / INVALID_LOGIN_CREDENTIALS
+        int errCode = aResult.error().code();
+        const char* errMsg = aResult.error().message().c_str();
+        if (errCode == 400 ||
+            strstr(errMsg, "INVALID_PASSWORD")         != NULL ||
+            strstr(errMsg, "EMAIL_NOT_FOUND")          != NULL ||
+            strstr(errMsg, "INVALID_LOGIN_CREDENTIALS")!= NULL ||
+            strstr(errMsg, "invalid_grant")            != NULL)
+        {
+            if (_instance) _instance->_credentialError = true;
+            Serial.println("[Firebase] Erro de credenciais detectado!");
+        }
     }
 
     if (aResult.available())
@@ -31,7 +44,9 @@ FBase::FBase(const String& api, const String& db_url, const String& user_email, 
       user_auth(apiKey.c_str(), email.c_str(), password.c_str()),
       aClient(ssl_client),
       authenticated(false)       
-      {}
+      {
+          _instance = this; // necessário para processData acessar _credentialError
+      }
 
 bool FBase::init() {
     const unsigned long INIT_TIMEOUT = 30000;
@@ -201,6 +216,11 @@ bool FBase::isReady() {
 bool FBase::isBusy()
 {
     return _pendingFloat || _pendingString || _pendingBool;
+}
+
+bool FBase::hasCredentialError()
+{
+    return _credentialError;
 }
 
 String* FBase::asyncTarget = nullptr;
