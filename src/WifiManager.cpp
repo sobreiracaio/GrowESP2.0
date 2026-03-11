@@ -136,6 +136,7 @@ void WifiManager::startPortal()
         if (currentMillis - previousMillis >= interval) 
         {
             previousMillis = currentMillis;
+            esp_task_wdt_reset();
             dnsServer.processNextRequest();
             webServer.handleClient();
         }

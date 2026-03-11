@@ -539,6 +539,31 @@ void setup()
     }
 
     Serial.begin(115200);
+
+    // ── Log da causa do último reset ──────────────────────────────────
+    {
+        esp_reset_reason_t reason = esp_reset_reason();
+        const char* reasonStr = "DESCONHECIDO";
+        switch (reason) {
+            case ESP_RST_POWERON:   reasonStr = "POWER_ON (alimentacao)";       break;
+            case ESP_RST_EXT:       reasonStr = "RESET_EXTERNO (pino EN)";      break;
+            case ESP_RST_SW:        reasonStr = "RESET_SOFTWARE (ESP.restart)"; break;
+            case ESP_RST_PANIC:     reasonStr = "PANIC (crash/excecao)";        break;
+            case ESP_RST_INT_WDT:   reasonStr = "WATCHDOG_INTERRUPCAO";         break;
+            case ESP_RST_TASK_WDT:  reasonStr = "WATCHDOG_TAREFA";              break;
+            case ESP_RST_WDT:       reasonStr = "WATCHDOG_OUTRO";               break;
+            case ESP_RST_DEEPSLEEP: reasonStr = "DEEP_SLEEP";                  break;
+            case ESP_RST_BROWNOUT:  reasonStr = "BROWNOUT (queda de tensao!)";  break;
+            case ESP_RST_SDIO:      reasonStr = "SDIO";                         break;
+            default:                                                             break;
+        }
+        Serial.printf("\n[RESET] Causa do ultimo reset: %s (codigo %d)\n", reasonStr, (int)reason);
+
+        // Exibe no display por 2s para ser visível mesmo sem Serial conectado
+        display->logoScreen(String("Reset: ") + reasonStr);
+        delay(2000);
+    }
+
     display->logoScreen("Ajustando protocolos de comunicacao...");
     delay(500);
 
@@ -589,9 +614,29 @@ void firebaseReconnectLoop()
     if (!wifi.getStatus() || !firebase) return;
     if (firebase->isBusy()) return;
 
-    static unsigned long _lastAttempt   = 0;
-    static unsigned long _backoff       = 2000;  // começa em 2s
-    static bool          _waitingToInit = false;
+    static unsigned long _lastAttempt    = 0;
+    static unsigned long _backoff        = 2000;  // começa em 2s
+    static bool          _waitingToInit  = false;
+    static unsigned long _wifiStableSince = 0;    // quando o WiFi ficou estável
+
+    // ── Rastreia estabilidade do WiFi ─────────────────────────────────
+    // Reseta o contador sempre que o WiFi cai para garantir que só
+    // tentamos init() depois de 3s contínuos de conexão estável.
+    static bool _lastWifiStatus = false;
+    bool wifiNow = wifi.getStatus();
+    if (!wifiNow) {
+        _lastWifiStatus  = false;
+        _wifiStableSince = 0;
+        return;
+    }
+    if (!_lastWifiStatus && wifiNow) {
+        // WiFi acabou de (re)conectar — marca o instante
+        _wifiStableSince = millis();
+        _lastWifiStatus  = true;
+        Serial.println("[Firebase] WiFi reconectado. Aguardando estabilizacao (3s)...");
+    }
+    // Ainda dentro da janela de estabilização — não toca no Firebase
+    if (millis() - _wifiStableSince < 3000) return;
 
     // ── Heap baixo: força reconexão imediata ──────────────────────────
     bool heapLow = ESP.getFreeHeap() < 30000;
@@ -635,7 +680,7 @@ void firebaseReconnectLoop()
 
     if (ok) {
         Serial.println("[Firebase] Reconectado com sucesso!");
-        _backoff       = 2000; // reseta backoff
+        _backoff       = 2000;
         _waitingToInit = false;
     } else {
         // Backoff exponencial com teto de 64s
