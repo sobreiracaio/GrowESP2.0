@@ -41,31 +41,42 @@ void OTA::setVersion(String new_version)
 
 // ── fetchReleaseInfo ──────────────────────────────────────────────────────────
 // NÃO toca no Firebase — usa cliente SSL próprio e independente.
-// Firebase continua rodando normalmente durante e após a consulta.
+// WiFiClientSecure e HTTPClient alocados no HEAP (new/delete) para evitar
+// stack leak de ~400 bytes por chamada que causava crash após ~22h.
 int OTA::fetchReleaseInfo()
 {
     if (binaryUrl.isEmpty()) return -1;
 
-    WiFiClientSecure client;
-    client.setInsecure();
-    client.setTimeout(15000);
+    WiFiClientSecure *client = new WiFiClientSecure();
+    if (!client) return -1;
+    client->setInsecure();
+    client->setTimeout(15000);
 
-    HTTPClient https;
-    if (!https.begin(client, binaryUrl)) return -1;
+    HTTPClient *https = new HTTPClient();
+    if (!https) { delete client; return -1; }
 
-    https.addHeader("Authorization", String("token ") + token);
-    https.addHeader("Accept",        "application/vnd.github.v3+json");
-    https.addHeader("User-Agent",    "ESP32");
-
-    int httpCode = https.GET();
-    if (httpCode != HTTP_CODE_OK) {
-        https.end();
+    if (!https->begin(*client, binaryUrl)) {
+        delete https;
+        delete client;
         return -1;
     }
 
-    String payload = https.getString();
-    https.end();
-    // client sai de escopo aqui — SSL fechado e liberado antes de qualquer coisa
+    https->addHeader("Authorization", String("token ") + token);
+    https->addHeader("Accept",        "application/vnd.github.v3+json");
+    https->addHeader("User-Agent",    "ESP32");
+
+    int httpCode = https->GET();
+    if (httpCode != HTTP_CODE_OK) {
+        https->end();
+        delete https;
+        delete client;
+        return -1;
+    }
+
+    String payload = https->getString();
+    https->end();
+    delete https;
+    delete client;
 
     // ── TAG/VERSÃO ────────────────────────────────────────────────────
     int tagPos = payload.indexOf("\"tag_name\":\"");

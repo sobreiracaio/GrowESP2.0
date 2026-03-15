@@ -8,6 +8,36 @@
 #include "OTA.hpp"
 #include "Light.hpp"
 #include "Serial.hpp"
+#include <freertos/task.h>
+#include <freertos/queue.h>
+#include <freertos/semphr.h>
+
+// ── Fila de comandos para a firebaseTask ─────────────────────────────────────
+// O loopTask enfileira comandos (set/get) e a firebaseTask os executa.
+// Isso isola completamente o SSL/Firebase do loop principal.
+enum FbCmdType { FB_SET_STRING, FB_SET_FLOAT, FB_SET_BOOL, FB_GET_STRING };
+
+struct FbCmd {
+    FbCmdType   type;
+    char        path[128];
+    char        sval[64];   // string value ou buffer para GET
+    float       fval;
+    bool        bval;
+};
+
+static QueueHandle_t  _fbQueue    = NULL;   // loopTask → firebaseTask
+static SemaphoreHandle_t _fbMutex = NULL;   // protege acesso ao objeto firebase
+static volatile bool  _fbTaskAlive = false; // firebaseTask está rodando
+
+// ── Forward declarations ──────────────────────────────────────────────────────
+static void fbSet(const String& path, const String& val);
+static void fbSet(const String& path, float val);
+static void fbSet(const String& path, bool val);
+static bool fbReady();
+static bool fbTryLock();
+static void fbUnlock();
+static void fbAwaitGet(String path, String* result);
+static void fbAwaitGet(const char* path, char* buf, unsigned int len);
 
 // ── Objetos globais ───────────────────────────────────────────────────────────
 Preferences prefs;
@@ -145,14 +175,12 @@ void initModules()
 }
 
 // ── getNow ────────────────────────────────────────────────────────────────────
+// Uma única chamada atômica de getLocalTime() garante que todos os campos
+// de 'now' pertencem ao mesmo instante — evita inconsistências quando o
+// RTC avança entre chamadas separadas (ex: tm_sec=59, tm_min do minuto seguinte).
 void getNow()
 {
-    now.tm_hour = rtc.getHour();
-    now.tm_min  = rtc.getMinute();
-    now.tm_sec  = rtc.getSecond();
-    now.tm_mday = rtc.getDay();
-    now.tm_mon  = rtc.getMonth();
-    now.tm_year = rtc.getYear();
+    now = rtc.getTimeStruct(); // getLocalTime() atômico — um único snapshot
     rtc.checkSync();
 }
 
@@ -197,7 +225,7 @@ void receiveFirebaseData()
         }
 
         dataBuf[0] = '\0';
-        firebase->awaitGet(buildPath(i), dataBuf, sizeof(dataBuf));
+        fbAwaitGet(buildPath(i), dataBuf, (unsigned int)sizeof(dataBuf));
         applyReceivedData(i, dataBuf);
     }
 }
@@ -206,7 +234,7 @@ void receiveFirebaseData()
 void sendAndReceiveData()
 {
     if (!wifi.getStatus()) return;
-    if (!firebase || !firebase->isReady()) return;
+    if (!fbReady()) return;
     if (ESP.getMaxAllocHeap() < 20000) return;
 
     esp_task_wdt_reset();
@@ -221,14 +249,14 @@ void sendAndReceiveData()
 
         if (_rcvIndex < _pathsCount) {
             char dataBuf[256] = {};
-            firebase->awaitGet(buildPath(_rcvIndex), dataBuf, sizeof(dataBuf));
+            fbAwaitGet(buildPath(_rcvIndex), dataBuf, (unsigned int)sizeof(dataBuf));
             esp_task_wdt_reset();
             applyReceivedData(_rcvIndex, dataBuf);
             esp_task_wdt_reset();
             _rcvIndex++;
         } else {
             // Concluiu todos os paths
-            firebase->aSyncSetString(safeEmail + "/HasChange", String("false"));
+            fbSet(safeEmail + "/HasChange", String("false"));
             data_class.setHasChange("false");
             _rcvActive = false;
             _rcvIndex  = -1;
@@ -276,7 +304,7 @@ void sendAndReceiveData()
             for (int i = 0; i < 4; i++) {
                 if (sens[i] != last_sensors[i]) {
                     snprintf(fullPath, sizeof(fullPath), "%s%s", safeEmail.c_str(), spaths[i]);
-                    firebase->aSyncSetFloat(fullPath, sens[i]);
+                    fbSet(fullPath, sens[i]);
                     last_sensors[i] = sens[i];
                     esp_task_wdt_reset();
                 }
@@ -284,7 +312,7 @@ void sendAndReceiveData()
             for (int j = 0; j < 6; j++) {
                 if (acts[j] != last_act[j]) {
                     snprintf(fullPath, sizeof(fullPath), "%s%s", safeEmail.c_str(), apaths[j]);
-                    firebase->aSyncSetBool(fullPath, acts[j]);
+                    fbSet(fullPath, acts[j]);
                     last_act[j] = acts[j];
                     esp_task_wdt_reset();
                 }
@@ -300,7 +328,7 @@ void sendAndReceiveData()
     char hcBuf[16] = {};
     char hcPath[128];
     snprintf(hcPath, sizeof(hcPath), "%s/HasChange", safeEmail.c_str());
-    firebase->awaitGet(hcPath, hcBuf, sizeof(hcBuf));
+    fbAwaitGet(hcPath, hcBuf, (unsigned int)sizeof(hcBuf));
     data_class.setHasChange(String(hcBuf));
 
     if (strcmp(hcBuf, "true") == 0) {
@@ -359,10 +387,10 @@ void initFirebaseStructure()
 
     String statusPathStr(statusPath);
     String statusResult;
-    firebase->awaitGet(statusPathStr, &statusResult);
+    fbAwaitGet(statusPathStr, &statusResult);
 
     String verStr = ota.getVersion();
-    firebase->aSyncSetString(safeEmail + "/Version", verStr);
+    fbSet(safeEmail + "/Version", verStr);
 
     if (statusResult == "true" || statusResult == "false") {
         display->logoScreen("Dados existentes carregados!");
@@ -373,43 +401,259 @@ void initFirebaseStructure()
     display->logoScreen("Primeiro acesso, criando estrutura...");
     esp_task_wdt_reset();
 
-    firebase->aSyncSetBool  (safeEmail + "/Status", false);
-    firebase->aSyncSetString(safeEmail + "/email",   wifi.getEmail());
-    firebase->aSyncSetString(safeEmail + "/Version", verStr);
-    firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn",  String("08:00"));
-    firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", String("22:00"));
+    fbSet(safeEmail + "/Status", false);
+    fbSet(safeEmail + "/email",   wifi.getEmail());
+    fbSet(safeEmail + "/Version", verStr);
+    fbSet(safeEmail + "/InsertedData/Light/HourOn",  String("08:00"));
+    fbSet(safeEmail + "/InsertedData/Light/HourOff", String("22:00"));
     esp_task_wdt_reset();
 
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp",    data_class.getTargetTemp());
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", data_class.getTempTolerance());
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid",         data_class.getTargetHumid());
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance",      data_class.getHumidTolerance());
+    fbSet(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp",    data_class.getTargetTemp());
+    fbSet(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", data_class.getTempTolerance());
+    fbSet(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid",         data_class.getTargetHumid());
+    fbSet(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance",      data_class.getHumidTolerance());
     esp_task_wdt_reset();
 
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil",       data_class.getTargetSoil());
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance",    data_class.getSoilTolerance());
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration",     data_class.getPumpDuration());
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay",  data_class.getAbsorptionDelay());
+    fbSet(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil",       data_class.getTargetSoil());
+    fbSet(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance",    data_class.getSoilTolerance());
+    fbSet(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration",     data_class.getPumpDuration());
+    fbSet(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay",  data_class.getAbsorptionDelay());
     esp_task_wdt_reset();
 
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/SoilSensor/Dry",  (float)data_class.getSoilLow());
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/SoilSensor/Wet",  (float)data_class.getSoilUpper());
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow",   data_class.getPumpFlow());
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Behavior",        (float)data_class.getSoilBehavior());
+    fbSet(safeEmail + "/InsertedData/Sensor/Soil/Calibration/SoilSensor/Dry",  (float)data_class.getSoilLow());
+    fbSet(safeEmail + "/InsertedData/Sensor/Soil/Calibration/SoilSensor/Wet",  (float)data_class.getSoilUpper());
+    fbSet(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow",   data_class.getPumpFlow());
+    fbSet(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Behavior",        (float)data_class.getSoilBehavior());
     esp_task_wdt_reset();
 
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/WaterReserv/Calibration/Reserv",   data_class.getWaterRawReading());
-    firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/WaterReserv/Calibration/Capacity", data_class.getWaterCapacity());
+    fbSet(safeEmail + "/InsertedData/Sensor/WaterReserv/Calibration/Reserv",   data_class.getWaterRawReading());
+    fbSet(safeEmail + "/InsertedData/Sensor/WaterReserv/Calibration/Capacity", data_class.getWaterCapacity());
 
     display->logoScreen("Estrutura criada com sucesso!");
     delay(1000);
 }
 
 // ── wdt_conf ──────────────────────────────────────────────────────────────────
+// ── firebaseTask ─────────────────────────────────────────────────────────────
+// Task dedicada ao Firebase. Roda no core 0, com watchdog próprio de 60s.
+// Isola qualquer bloqueio SSL do loopTask — se travar, só ela é reiniciada
+// via ESP.restart() após watchdog, sem corromper o stack do loop principal.
+//
+// Comunicação com o loopTask via fila _fbQueue:
+//   loopTask  →  fbSet/fbGet (enfileira FbCmd)
+//   firebaseTask  →  executa FBase::aSyncSet*/awaitGet
+//
+static void firebaseTask(void* pv)
+{
+    esp_task_wdt_add(NULL);
+    Serial.println("[fbTask] Iniciada no core 0");
+    _fbTaskAlive = true;
+
+    // Estado da máquina de reconexão
+    static unsigned long _lastAttempt  = 0;
+    static unsigned long _backoff      = 2000;
+    static unsigned long _wifiSince    = 0;
+    static bool          _wifiWas      = false;
+    static unsigned long _initDoneAt   = 0;  // quando o último init() OK terminou
+    static bool          _needsInit    = false;
+
+    FbCmd cmd;
+    while (true) {
+        esp_task_wdt_reset();
+
+        bool wifiOk = (WiFi.status() == WL_CONNECTED);
+
+        // ── Rastreia estabilidade do WiFi ────────────────────────────
+        if (!wifiOk) {
+            if (_wifiWas) {
+                _wifiWas  = false;
+                _needsInit = true;
+                Serial.println("[fbTask] WiFi caiu. Marcando para reconexao.");
+            }
+            vTaskDelay(pdMS_TO_TICKS(500));
+            continue;
+        }
+        if (!_wifiWas) {
+            _wifiSince = millis();
+            _wifiWas   = true;
+            Serial.println("[fbTask] WiFi conectado. Aguardando 3s...");
+        }
+        if (millis() - _wifiSince < 3000) {
+            vTaskDelay(pdMS_TO_TICKS(200));
+            continue;
+        }
+
+        // ── Decide se precisa reconectar ─────────────────────────────
+        // Usa isReady() (não isHealthy) — isHealthy exige ssl_client.connected()
+        // que só fica true após a primeira operação de dados, causando loop falso.
+        if (!firebase) {
+            vTaskDelay(pdMS_TO_TICKS(500));
+            continue;
+        }
+
+        // ── Todos os acessos ao firebase protegidos por mutex ────────
+        if (!xSemaphoreTake(_fbMutex, pdMS_TO_TICKS(200))) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+        bool ready = firebase->isReady();
+        if (ready && millis() - _initDoneAt > 5000) {
+            if (!firebase->isHealthy()) {
+                Serial.println("[fbTask] Firebase caiu. Agendando reconexao.");
+                _needsInit = true;
+                ready = false;
+            }
+        }
+        xSemaphoreGive(_fbMutex);
+
+        if (!ready || _needsInit) {
+            if (millis() - _lastAttempt < _backoff) {
+                vTaskDelay(pdMS_TO_TICKS(100));
+                continue;
+            }
+            Serial.printf("[fbTask] Reconectando (backoff %lus)...\n", _backoff/1000);
+            esp_task_wdt_reset();
+            if (!xSemaphoreTake(_fbMutex, pdMS_TO_TICKS(5000))) {
+                vTaskDelay(pdMS_TO_TICKS(500));
+                continue;
+            }
+            if (firebase->isReady()) firebase->stopApp();
+            bool ok = firebase->init();
+            xSemaphoreGive(_fbMutex);
+            esp_task_wdt_reset();
+            if (ok) {
+                Serial.println("[fbTask] Firebase reconectado!");
+                _backoff    = 2000;
+                _needsInit  = false;
+                _initDoneAt = millis();
+                vTaskDelay(pdMS_TO_TICKS(2000));
+            } else {
+                _backoff = min(_backoff * 2, (unsigned long)64000);
+                _lastAttempt = millis();
+                Serial.printf("[fbTask] Falha. Proxima tentativa em %lus\n", _backoff/1000);
+            }
+            continue;
+        }
+
+        // ── Loop do Firebase ──────────────────────────────────────────
+        if (!xSemaphoreTake(_fbMutex, pdMS_TO_TICKS(200))) {
+            vTaskDelay(pdMS_TO_TICKS(10));
+            continue;
+        }
+        esp_task_wdt_reset();
+        firebase->loop();
+        esp_task_wdt_reset();
+        xSemaphoreGive(_fbMutex);
+
+        // ── Processa fila de comandos ─────────────────────────────────
+        if (_fbQueue && xQueueReceive(_fbQueue, &cmd, 0) == pdTRUE) {
+            if (!xSemaphoreTake(_fbMutex, pdMS_TO_TICKS(200))) continue;
+            if (firebase->isReady()) {
+                esp_task_wdt_reset();
+                switch (cmd.type) {
+                    case FB_SET_STRING:
+                        firebase->aSyncSetString(String(cmd.path), String(cmd.sval));
+                        break;
+                    case FB_SET_FLOAT:
+                        firebase->aSyncSetFloat(String(cmd.path), cmd.fval);
+                        break;
+                    case FB_SET_BOOL:
+                        firebase->aSyncSetBool(String(cmd.path), cmd.bval);
+                        break;
+                    default: break;
+                }
+                esp_task_wdt_reset();
+            }
+            xSemaphoreGive(_fbMutex);
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(10));
+        }
+    }
+}
+
+// ── Helpers para enfileirar operações Firebase ────────────────────────────────
+// O loopTask usa estas funções em vez de chamar firebase-> diretamente.
+// São não-bloqueantes: apenas enfileiram o comando e retornam imediatamente.
+
+static void fbSet(const String& path, const String& val)
+{
+    if (!_fbQueue) return;
+    FbCmd cmd;
+    cmd.type = FB_SET_STRING;
+    strncpy(cmd.path, path.c_str(), sizeof(cmd.path) - 1);
+    strncpy(cmd.sval, val.c_str(),  sizeof(cmd.sval) - 1);
+    cmd.path[sizeof(cmd.path)-1] = 0;
+    cmd.sval[sizeof(cmd.sval)-1] = 0;
+    xQueueSend(_fbQueue, &cmd, 0);  // pdFALSE = descarta se fila cheia
+}
+
+static void fbSet(const String& path, float val)
+{
+    if (!_fbQueue) return;
+    FbCmd cmd;
+    cmd.type = FB_SET_FLOAT;
+    strncpy(cmd.path, path.c_str(), sizeof(cmd.path) - 1);
+    cmd.path[sizeof(cmd.path)-1] = 0;
+    cmd.fval = val;
+    xQueueSend(_fbQueue, &cmd, 0);
+}
+
+static void fbSet(const String& path, bool val)
+{
+    if (!_fbQueue) return;
+    FbCmd cmd;
+    cmd.type = FB_SET_BOOL;
+    strncpy(cmd.path, path.c_str(), sizeof(cmd.path) - 1);
+    cmd.path[sizeof(cmd.path)-1] = 0;
+    cmd.bval = val;
+    xQueueSend(_fbQueue, &cmd, 0);
+}
+
+// fbReady: o loopTask pode verificar se vale a pena enfileirar
+// fbLock/fbUnlock — usados pelo loopTask para acessar firebase com segurança
+// A firebaseTask usa o mesmo mutex antes de qualquer firebase->
+// fbTryLock — tenta adquirir o mutex SEM bloquear (timeout zero).
+// O loopTask NUNCA deve esperar pelo mutex — se a firebaseTask está ocupada,
+// descarta a operação e tenta na próxima iteração. Isso garante que
+// ButtonIdle, display e botões respondam sempre sem travamento.
+static bool fbTryLock()
+{
+    if (!_fbMutex) return false;
+    return xSemaphoreTake(_fbMutex, 0) == pdTRUE;
+}
+static void fbUnlock()
+{
+    if (_fbMutex) xSemaphoreGive(_fbMutex);
+}
+
+static bool fbReady()
+{
+    if (!firebase) return false;
+    if (!fbTryLock()) return false;  // se ocupado, reporta "não pronto"
+    bool r = firebase->isReady();
+    fbUnlock();
+    return r;
+}
+
+// fbAwaitGet — awaitGet não-bloqueante para o loopTask.
+// Se o mutex não estiver disponível, retorna sem fazer nada.
+static void fbAwaitGet(String path, String* result)
+{
+    if (!firebase || !fbTryLock()) return;
+    firebase->awaitGet(path, result);
+    fbUnlock();
+}
+static void fbAwaitGet(const char* path, char* buf, unsigned int len)
+{
+    if (!firebase || !fbTryLock()) return;
+    firebase->awaitGet(path, buf, len);
+    fbUnlock();
+}
+
 void wdt_conf()
 {
     esp_task_wdt_deinit();
-    esp_task_wdt_init(30, false);
+    esp_task_wdt_init(30, true);
     esp_task_wdt_add(NULL);
 }
 
@@ -503,10 +747,26 @@ void heapMonitor()
     uint32_t freeHeap = ESP.getFreeHeap();
     uint32_t maxBlock = ESP.getMaxAllocHeap();
 
-    Serial.printf("[HEAP] Free: %lu | Min: %lu | MaxBlock: %lu\n",
+    // ── Stack do loopTask ─────────────────────────────────────────────
+    // uxTaskGetStackHighWaterMark(NULL) retorna o mínimo de words livres
+    // que já houve no stack desta task desde que foi criada.
+    // Cada word = 4 bytes no ESP32. Abaixo de 512 words (2KB) é crítico.
+    UBaseType_t stackWatermark = uxTaskGetStackHighWaterMark(NULL);
+
+    Serial.printf("[HEAP] Free: %lu | Min: %lu | MaxBlock: %lu | StackMin: %lu words (%lu bytes)\n",
         (unsigned long)freeHeap,
         (unsigned long)ESP.getMinFreeHeap(),
-        (unsigned long)maxBlock);
+        (unsigned long)maxBlock,
+        (unsigned long)stackWatermark,
+        (unsigned long)stackWatermark * 4);
+
+    // Stack crítico — stack overflow iminente
+    if (stackWatermark < 512) {
+        Serial.printf("[STACK] CRITICO! Minimo historico: %lu words. Reiniciando preventivamente.\n",
+                      (unsigned long)stackWatermark);
+        Serial.flush();
+        ESP.restart();
+    }
 
     // Fragmentação crítica: livre mas sem bloco contíguo
     if (freeHeap > 20000 && maxBlock < 10000) {
@@ -588,6 +848,13 @@ void setup()
         safeEmail = wifi.getEmail();
         safeEmail.replace(".", "_");
 
+        // Criar fila e mutex ANTES do startup para que fbAwaitGet
+        // funcione corretamente durante receiveFirebaseData no boot.
+        // A firebaseTask só é criada depois — durante o startup o mutex
+        // fica livre e fbTryLock() retorna true normalmente.
+        if (!_fbQueue) _fbQueue = xQueueCreate(20, sizeof(FbCmd));
+        if (!_fbMutex) _fbMutex = xSemaphoreCreateMutex();
+
         firebase_healthy_startup();
     } else {
         display->logoScreen("Internet nao configurada, indo para configuracao");
@@ -604,91 +871,26 @@ void setup()
     display->logoScreen("Versao: " + ota.getVersion());
     delay(1000);
     ota.fetchReleaseInfo();
+
+    // ── Lança a task dedicada do Firebase ────────────────────────────────────
+    // A partir daqui o Firebase roda em task separada (core 0).
+    // O loopTask (core 1) nunca mais chama firebase-> diretamente —
+    // usa fbSet() para enfileirar e fbReady() para verificar estado.
+    xTaskCreatePinnedToCore(
+        firebaseTask,   // função da task
+        "firebaseTask", // nome
+        8192,           // stack 8KB — SSL + mbedTLS precisam de espaço
+        NULL,
+        2,              // prioridade 2 > loopTask (1) para não perder eventos
+        NULL,
+        0               // core 0 — loopTask fica no core 1
+    );
+    Serial.println("[Setup] firebaseTask criada no core 0");
 }
 
-// ── firebaseReconnectLoop ─────────────────────────────────────────────────────
-// Ponto único de reconexão Firebase. Backoff exponencial: 2s → 4s → 8s → ... → 64s
-// Evita martelo no servidor quando Firebase está fora (não o WiFi).
-void firebaseReconnectLoop()
-{
-    if (!wifi.getStatus() || !firebase) return;
-    if (firebase->isBusy()) return;
-
-    static unsigned long _lastAttempt    = 0;
-    static unsigned long _backoff        = 2000;  // começa em 2s
-    static bool          _waitingToInit  = false;
-    static unsigned long _wifiStableSince = 0;    // quando o WiFi ficou estável
-
-    // ── Rastreia estabilidade do WiFi ─────────────────────────────────
-    // Reseta o contador sempre que o WiFi cai para garantir que só
-    // tentamos init() depois de 3s contínuos de conexão estável.
-    static bool _lastWifiStatus = false;
-    bool wifiNow = wifi.getStatus();
-    if (!wifiNow) {
-        _lastWifiStatus  = false;
-        _wifiStableSince = 0;
-        return;
-    }
-    if (!_lastWifiStatus && wifiNow) {
-        // WiFi acabou de (re)conectar — marca o instante
-        _wifiStableSince = millis();
-        _lastWifiStatus  = true;
-        Serial.println("[Firebase] WiFi reconectado. Aguardando estabilizacao (3s)...");
-    }
-    // Ainda dentro da janela de estabilização — não toca no Firebase
-    if (millis() - _wifiStableSince < 3000) return;
-
-    // ── Heap baixo: força reconexão imediata ──────────────────────────
-    bool heapLow = ESP.getFreeHeap() < 30000;
-    if (heapLow && firebase->isHealthy()) {
-        Serial.printf("[HEAP] Baixo (%lu), forcando reconexao Firebase...\n",
-                      (unsigned long)ESP.getFreeHeap());
-        esp_task_wdt_reset();
-        firebase->stopApp();
-        esp_task_wdt_reset();
-        _waitingToInit = true;
-        _lastAttempt   = millis();
-        _backoff       = 2000;
-        return;
-    }
-
-    // ── Firebase saudável: reseta backoff ─────────────────────────────
-    if (firebase->isHealthy()) {
-        _backoff       = 2000;
-        _waitingToInit = false;
-        return;
-    }
-
-    // ── Firebase não saudável: inicia espera se ainda não iniciou ─────
-    if (!_waitingToInit) {
-        esp_task_wdt_reset();
-        firebase->stopApp();
-        esp_task_wdt_reset();
-        _waitingToInit = true;
-        _lastAttempt   = millis();
-        Serial.printf("[Firebase] Reconectando em %lus...\n", _backoff / 1000);
-        return;
-    }
-
-    // ── Aguarda backoff antes de tentar init ──────────────────────────
-    if (millis() - _lastAttempt < _backoff) return;
-
-    Serial.println("[Firebase] Tentando reconectar...");
-    esp_task_wdt_reset();
-    bool ok = firebase->init();
-    esp_task_wdt_reset();
-
-    if (ok) {
-        Serial.println("[Firebase] Reconectado com sucesso!");
-        _backoff       = 2000;
-        _waitingToInit = false;
-    } else {
-        // Backoff exponencial com teto de 64s
-        _backoff = min(_backoff * 2, (unsigned long)64000);
-        _lastAttempt = millis();
-        Serial.printf("[Firebase] Falha. Proxima tentativa em %lus.\n", _backoff / 1000);
-    }
-}
+// ── firebaseReconnectLoop ────────────────────────────────────────────────────
+// Mantida por compatibilidade — reconexão agora gerenciada pela firebaseTask.
+void firebaseReconnectLoop() { }
 
 // ── loop ──────────────────────────────────────────────────────────────────────
 void loop()
@@ -699,7 +901,7 @@ void loop()
     if (wifi.getStatus() && rtc.getStatus())
         getNow();
 
-    firebaseReconnectLoop();
+    // Firebase gerenciado pela firebaseTask — sem chamada aqui
 
     ButtonIdle();
 
