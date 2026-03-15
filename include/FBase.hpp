@@ -61,6 +61,7 @@ class FBase {
         FBase(const String& api, const String& db_url, const String& user_email, const String& user_password);
         bool init();
         bool stopApp();
+        void safeStop();           // fecha SSL com wdt_reset para evitar watchdog
         bool isReady();
         void loop();
         bool isHealthy();

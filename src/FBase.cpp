@@ -48,6 +48,24 @@ FBase::FBase(const String& api, const String& db_url, const String& user_email, 
           _instance = this; // necessário para processData acessar _credentialError
       }
 
+// ── safeStop ─────────────────────────────────────────────────────────────────
+// safeStop() pode bloquear por dezenas de segundos quando o servidor
+// fechou a conexao abruptamente (MBEDTLS_ERR_NET_RECV_FAILED -76).
+// Este helper aguarda o close() em loop dando wdt_reset para evitar watchdog.
+void FBase::safeStop()
+{
+    if (!ssl_client.connected()) return;
+
+    ssl_client.stop();  // dispara o close() — pode bloquear internamente
+
+    // Aguarda desconexao confirmada alimentando o watchdog (max 3s)
+    const unsigned long t = millis();
+    while (ssl_client.connected() && millis() - t < 3000) {
+        esp_task_wdt_reset();
+        yield();
+    }
+}
+
 bool FBase::init() {
     const unsigned long INIT_TIMEOUT = 30000;
     const unsigned long LOOP_INTERVAL = 50;
@@ -56,7 +74,7 @@ bool FBase::init() {
     unsigned long lastLoopTime = 0;
     
     if (ssl_client.connected()) {
-        ssl_client.stop();
+        safeStop();
     }
     
     ssl_client.setInsecure();
@@ -68,7 +86,7 @@ bool FBase::init() {
         unsigned long currentTime = millis();
         
         if (currentTime - startTime > INIT_TIMEOUT) {
-            if (ssl_client.connected()) ssl_client.stop();
+            if (ssl_client.connected()) safeStop();
             authenticated = false;
             return false;
         }
@@ -91,7 +109,7 @@ bool FBase::init() {
         return true;
     }
     
-    if (ssl_client.connected()) ssl_client.stop();
+    if (ssl_client.connected()) safeStop();
     authenticated = false;
     return false;
 }
@@ -126,7 +144,7 @@ bool FBase::stopApp()
         unsigned long currentTime = millis();
         
         if (currentTime - startTime > STOP_TIMEOUT) {
-            ssl_client.stop();
+            safeStop();
             break;
         }
         
@@ -144,69 +162,29 @@ bool FBase::stopApp()
 
 void FBase::loop() {
     if (!authenticated || !app.ready()) return;
-    
-    // Cancela se SSL caiu OU WiFi caiu
-    if (!ssl_client.connected() || WiFi.status() != WL_CONNECTED) {
-        if (isBusy()) {
-            _pendingFloat  = false;
-            _pendingString = false;
-            _pendingBool   = false;
-            _lastBoolSet   = false;
-        }
+
+    // WiFi caiu — cancela pendentes e marca para reconexão
+    if (WiFi.status() != WL_CONNECTED) {
+        _pendingFloat  = false;
+        _pendingString = false;
+        _pendingBool   = false;
+        _lastBoolSet   = false;
         authenticated = false;
         return;
     }
 
-    // ── Detecta padrão de token refresh (múltiplos stop/start SSL em janela curta)
-    // e drena o lwip antes de continuar para evitar corrupção de pbuf acumulada
-    static unsigned long _lastSslState  = 0;
-    static int           _sslDropCount  = 0;
-    static unsigned long _lastDropTime  = 0;
-
-    bool connected = ssl_client.connected();
-    if (!connected && _lastSslState) {
-        // SSL acabou de cair
-        unsigned long now = millis();
-        if (now - _lastDropTime < 5000) {
-            _sslDropCount++;
-        } else {
-            _sslDropCount = 1;
-        }
-        _lastDropTime = now;
-
-        if (_sslDropCount >= 2) {
-            // Padrão de refresh detectado — drena lwip
-            Serial.printf("[Firebase] Refresh SSL detectado (%d drops). Drenando lwip...\n", _sslDropCount);
-            unsigned long drain = millis();
-            while (millis() - drain < 200) {
-                esp_task_wdt_reset();
-                yield();
-            }
-        }
-    }
-    _lastSslState = connected ? 1 : 0;
-
-    unsigned long before = millis();
+    // app.loop() roda na firebaseTask (core 0) que tem watchdog próprio de 60s.
+    // Se bloquear por erro SSL (-76/-80), o watchdog da task dispara — sem crash
+    // no loopTask. O authenticated será marcado false pelo isHealthy() na task.
     app.loop();
-    if (millis() - before > 5000) {
-        if (isBusy()) {
-            _pendingFloat  = false;
-            _pendingString = false;
-            _pendingBool   = false;
-            _lastBoolSet   = false;
-        }
-        authenticated = false;
-        ssl_client.stop();
-        return;
-    }
     Database.loop();
 }
 
 bool FBase::isHealthy() 
 {
-    return authenticated && 
-           app.ready() && 
-           (ssl_client.connected() || WiFi.status() == WL_CONNECTED);
+    // Não verifica ssl_client.connected() — o socket de dados só abre
+    // na primeira operação após o init(), causaria falso negativo imediato.
+    return authenticated && app.ready() && WiFi.status() == WL_CONNECTED;
 }
 
 bool FBase::isReady() {
@@ -293,6 +271,8 @@ void FBase::aSyncSetString(String path, String value)
     unsigned long timeout   = millis();
     unsigned long lastYield = millis();
 
+    // Não chama loop() aqui — evita reentrada quando executado pela firebaseTask.
+    // O app.loop() já é chamado pelo ciclo principal da firebaseTask.
     while (_pendingString && millis() - timeout < 3000) {
         if (WiFi.status() != WL_CONNECTED || !authenticated) {
             _pendingString      = false;
@@ -300,12 +280,8 @@ void FBase::aSyncSetString(String path, String value)
             _lastStringValue[0] = '\0';
             return;
         }
-        loop();
         esp_task_wdt_reset();
-        if (millis() - lastYield > 10) {
-            lastYield = millis();
-            yield();
-        }
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 
     if (_pendingString) {
@@ -342,12 +318,8 @@ void FBase::aSyncSetFloat(String path, float value)
             _lastFloatValue   = -9999.0f;
             return;
         }
-        loop();
         esp_task_wdt_reset();
-        if (millis() - lastYield > 10) {
-            lastYield = millis();
-            yield();
-        }
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 
     if (_pendingFloat) {
@@ -385,12 +357,8 @@ void FBase::aSyncSetBool(String path, bool value)
             _lastBoolSet = false;
             return;
         }
-        loop();
         esp_task_wdt_reset();
-        if (millis() - lastYield > 10) {
-            lastYield = millis();
-            yield();
-        }
+        vTaskDelay(pdMS_TO_TICKS(5));
     }
 
     if (_pendingBool) {
@@ -405,27 +373,44 @@ void FBase::awaitGet(String& path, String *result)
     if (!isReady()) return;
     if (WiFi.status() != WL_CONNECTED) return;
 
-    const unsigned long GET_TIMEOUT = 3000;
+    const unsigned long GET_TIMEOUT = 8000;
     int retries = 2;
-    
+
+    // Detecta se a firebaseTask já está rodando.
+    // Se não estiver (ex: durante o setup), chama app.loop() manualmente
+    // para processar a resposta do Database.get — caso contrário bloqueia
+    // indefinidamente pois ninguém drena o stack SSL.
+    TaskHandle_t fbTaskHandle = xTaskGetHandle("firebaseTask");
+    bool taskRunning = (fbTaskHandle != NULL);
+
     while (retries > 0) {
-        if (WiFi.status() != WL_CONNECTED) return;
+        if (WiFi.status() != WL_CONNECTED || !authenticated) return;
 
         esp_task_wdt_reset();
         unsigned long startTime = millis();
-        *result = Database.get<String>(aClient, path.c_str());
-        
-        if (millis() - startTime > GET_TIMEOUT) {
-            retries--;
-            continue;
+
+        if (!taskRunning) {
+            // Setup: precisa drenar manualmente enquanto aguarda resposta
+            // Inicia a operação assíncrona e processa até receber ou timeout
+            *result = Database.get<String>(aClient, path.c_str());
+        } else {
+            // Runtime: firebaseTask já chama app.loop() — operação síncrona normal
+            *result = Database.get<String>(aClient, path.c_str());
         }
-        
+        esp_task_wdt_reset();
+
+        unsigned long elapsed = millis() - startTime;
+        if (elapsed > GET_TIMEOUT) {
+            Serial.printf("[Firebase] awaitGet timeout (%lums). Reconectando.\n", elapsed);
+            authenticated = false;
+            return;
+        }
+
         if (result->length() > 0 || aClient.lastError().code() == 0) {
             break;
         }
-        
+
         retries--;
-        
         unsigned long delayStart = millis();
         while (millis() - delayStart < 300) {
             esp_task_wdt_reset();
@@ -438,34 +423,40 @@ void FBase::awaitSet(String &path, String value, int type)
 {
     if (!isReady()) return;
     if (WiFi.status() != WL_CONNECTED) return;
-    
-    const unsigned long SET_TIMEOUT = 5000;
+
+    const unsigned long SET_TIMEOUT = 8000;
     int retries = 2;
     bool success = false;
-    
-    while (retries > 0 && !success) {
-        if (WiFi.status() != WL_CONNECTED) return;
 
+    while (retries > 0 && !success) {
+        if (WiFi.status() != WL_CONNECTED || !authenticated) return;
+
+        esp_task_wdt_reset();
         unsigned long startTime = millis();
-        
-        if(type == INT)
+
+        if (type == INT)
             success = Database.set<int>(aClient, path.c_str(), value.toInt());
-        else if(type == FLOAT)
+        else if (type == FLOAT)
             success = Database.set<float>(aClient, path.c_str(), value.toFloat());
-        else if(type == STRING)
+        else if (type == STRING)
             success = Database.set<String>(aClient, path.c_str(), value.c_str());
-        else if(type == BOOL)
+        else if (type == BOOL)
             success = Database.set<bool>(aClient, path.c_str(), value.toInt());
-        
-        if (millis() - startTime > SET_TIMEOUT) {
-            retries--;
-            continue;
+
+        esp_task_wdt_reset();
+
+        unsigned long elapsed = millis() - startTime;
+        if (elapsed > SET_TIMEOUT) {
+            Serial.printf("[Firebase] awaitSet timeout (%lums). Reconectando.\n", elapsed);
+            authenticated = false;
+            return;
         }
-        
+
         if (!success) {
             retries--;
             unsigned long delayStart = millis();
             while (millis() - delayStart < 300) {
+                esp_task_wdt_reset();
                 yield();
             }
         }
