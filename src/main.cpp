@@ -653,7 +653,7 @@ static void fbAwaitGet(const char* path, char* buf, unsigned int len)
 void wdt_conf()
 {
     esp_task_wdt_deinit();
-    esp_task_wdt_init(30, true);
+    esp_task_wdt_init(60, true);
     esp_task_wdt_add(NULL);
 }
 
