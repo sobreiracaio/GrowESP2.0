@@ -8,36 +8,13 @@
 #include "OTA.hpp"
 #include "Light.hpp"
 #include "Serial.hpp"
-#include <freertos/task.h>
-#include <freertos/queue.h>
-#include <freertos/semphr.h>
 
-// ── Fila de comandos para a firebaseTask ─────────────────────────────────────
-// O loopTask enfileira comandos (set/get) e a firebaseTask os executa.
-// Isso isola completamente o SSL/Firebase do loop principal.
-enum FbCmdType { FB_SET_STRING, FB_SET_FLOAT, FB_SET_BOOL, FB_GET_STRING };
 
-struct FbCmd {
-    FbCmdType   type;
-    char        path[128];
-    char        sval[64];   // string value ou buffer para GET
-    float       fval;
-    bool        bval;
-};
 
-static QueueHandle_t  _fbQueue    = NULL;   // loopTask → firebaseTask
-static SemaphoreHandle_t _fbMutex = NULL;   // protege acesso ao objeto firebase
-static volatile bool  _fbTaskAlive = false; // firebaseTask está rodando
 
 // ── Forward declarations ──────────────────────────────────────────────────────
-static void fbSet(const String& path, const String& val);
-static void fbSet(const String& path, float val);
-static void fbSet(const String& path, bool val);
-static bool fbReady();
-static bool fbTryLock();
-static void fbUnlock();
-static void fbAwaitGet(String path, String* result);
-static void fbAwaitGet(const char* path, char* buf, unsigned int len);
+
+
 
 // ── Objetos globais ───────────────────────────────────────────────────────────
 Preferences prefs;
@@ -58,8 +35,7 @@ struct tm now       = {0};
 String    safeEmail = "";
 int       menu      = -1;
 
-// ── Receive incremental ───────────────────────────────────────────────────────
-static int  _rcvIndex  = -1;
+// ── Receive ──────────────────────────────────────────────────────────────────
 static bool _rcvActive = false;
 
 // ── Tabela de paths — única definição, sem duplicata ─────────────────────────
@@ -210,6 +186,110 @@ void sendDataStartUP()
     sendPacket(PUMP_CAL, false);
 }
 
+// ── receiveFirebaseDataFast ───────────────────────────────────────────────────
+// Faz 1 GET no nó raiz do usuário + 3 GETs nos nós globais.
+// Total: 4 requisições SSL ao invés de 21 — startup ~4× mais rápido.
+bool receiveFirebaseDataFast()
+{
+    esp_task_wdt_reset();
+
+    // ── 1. GET nó raiz do usuário (contém InsertedData, Version, Status) ──
+    String userJson;
+    if (!firebase->dbGetRaw(safeEmail, userJson)) {
+        Serial.println("[RCV Fast] Falhou GET raiz usuario, usando receive lento.");
+        return false;
+    }
+
+    esp_task_wdt_reset();
+
+    // Parse do JSON do usuário com ArduinoJson
+    // O nó raiz pode ter ~2KB — DynamicJsonDocument com 4KB é suficiente
+    DynamicJsonDocument doc(2048);
+    DeserializationError err = deserializeJson(doc, userJson);
+    if (err) {
+        Serial.printf("[RCV Fast] JSON parse erro: %s\n", err.c_str());
+        return false;
+    }
+
+    // Helpers para extrair valores com fallback seguro
+    auto getStr = [&](JsonVariant v) -> String {
+        if (v.isNull()) return "";
+        return v.as<String>();
+    };
+    auto getFloat = [&](JsonVariant v, float def = 0.0f) -> float {
+        if (v.isNull()) return def;
+        return v.as<float>();
+    };
+
+    // InsertedData/Light
+    JsonObject light_obj = doc["InsertedData"]["Light"];
+    {
+        String hon = getStr(light_obj["HourOn"]);
+        if (hon.length() > 0) {
+            int c = hon.indexOf(':');
+            if (c != -1) {
+                data_class.setDayTime(hon.substring(0,c).toInt(), hon.substring(c+1).toInt());
+                data_class.getDayTime(display->day);
+            }
+        }
+        String hoff = getStr(light_obj["HourOff"]);
+        if (hoff.length() > 0) {
+            int c = hoff.indexOf(':');
+            if (c != -1) {
+                data_class.setNightTime(hoff.substring(0,c).toInt(), hoff.substring(c+1).toInt());
+                data_class.getNightTime(display->night);
+            }
+        }
+    }
+
+    // InsertedData/Sensor/Temperature
+    JsonObject temp_obj = doc["InsertedData"]["Sensor"]["Temperature"];
+    data_class.setTargetTemp(getFloat(temp_obj["TargetTemp"]));
+    data_class.setTempTolerance(getFloat(temp_obj["TempTolerance"]));
+
+    // InsertedData/Sensor/Humid
+    JsonObject humid_obj = doc["InsertedData"]["Sensor"]["Humid"];
+    data_class.setTargetHumid(getFloat(humid_obj["TargetHumid"]));
+    data_class.setHumidTolerance(getFloat(humid_obj["HumidTolerance"]));
+
+    // InsertedData/Sensor/Soil
+    JsonObject soil_obj = doc["InsertedData"]["Sensor"]["Soil"];
+    data_class.setTargetSoil(getFloat(soil_obj["TargetSoil"]));
+    data_class.setPumpDuration(getFloat(soil_obj["PumpDuration"]));
+    data_class.setAbsorptionDelay(getFloat(soil_obj["AbsorptionDelay"]));
+    data_class.setSoilTolerance(getFloat(soil_obj["SoilTolerance"]));
+
+    // InsertedData/Sensor/Soil/Calibration
+    JsonObject cal_obj = soil_obj["Calibration"];
+    data_class.setSoilLow(cal_obj["SoilSensor"]["Dry"].as<int>());
+    data_class.setSoilUpper(cal_obj["SoilSensor"]["Wet"].as<int>());
+    data_class.setPumpFlow(getFloat(cal_obj["Pump"]["PumpFlow"]));
+    data_class.setSoilBehavior((int)getFloat(cal_obj["Behavior"]));
+
+    // InsertedData/Sensor/WaterReserv
+    JsonObject water_obj = doc["InsertedData"]["Sensor"]["WaterReserv"]["Calibration"];
+    data_class.setWaterRawReading(getFloat(water_obj["Reserv"]));
+    data_class.setWaterCapacity(getFloat(water_obj["Capacity"]));
+
+    // Version e Status
+    ota.setVersion(getStr(doc["Version"]).c_str());
+    data_class.setIsRunning(doc["Status"].as<bool>());
+
+    doc.clear();
+    esp_task_wdt_reset();
+
+    // ── 2. GETs nos nós globais (/_Binary, /_Token, /_HasUpdate) ──────
+    String val;
+    if (firebase->dbGet("/_Binary",    val)) ota.setBinaryPath(val.c_str());
+    esp_task_wdt_reset();
+    if (firebase->dbGet("/_Token",     val)) ota.setToken(val.c_str());
+    esp_task_wdt_reset();
+    if (firebase->dbGet("/_HasUpdate", val)) ota.setHasUpdate(val == "true");
+    esp_task_wdt_reset();
+
+    return true;
+}
+
 // ── receiveFirebaseData ───────────────────────────────────────────────────────
 // Usa buffer fixo — zero alocação dinâmica de String no loop
 void receiveFirebaseData()
@@ -225,7 +305,7 @@ void receiveFirebaseData()
         }
 
         dataBuf[0] = '\0';
-        fbAwaitGet(buildPath(i), dataBuf, (unsigned int)sizeof(dataBuf));
+        firebase->awaitGet(buildPath(i), dataBuf, (unsigned int)sizeof(dataBuf));
         applyReceivedData(i, dataBuf);
     }
 }
@@ -234,33 +314,25 @@ void receiveFirebaseData()
 void sendAndReceiveData()
 {
     if (!wifi.getStatus()) return;
-    if (!fbReady()) return;
+    if (!firebase->isReady()) return;
     if (ESP.getMaxAllocHeap() < 20000) return;
 
     esp_task_wdt_reset();
 
-    // ── FASE RECEIVE incremental (1 path por chamada) ─────────────────
+    // ── FASE RECEIVE — ativado por HasChange == true ─────────────────
     if (_rcvActive) {
-        if (WiFi.status() != WL_CONNECTED) {
-            _rcvActive = false;
-            _rcvIndex  = -1;
-            return;
+        if (WiFi.status() != WL_CONNECTED) { _rcvActive = false; return; }
+        display->logoScreen("Atualizando dados...");
+        // Usa receive rapido (1 GET raiz + 3 globais) em vez de 21 GETs individuais
+        if (!receiveFirebaseDataFast()) {
+            Serial.println("[HasChange] Fast receive falhou, usando receive lento...");
+            receiveFirebaseData();
         }
-
-        if (_rcvIndex < _pathsCount) {
-            char dataBuf[256] = {};
-            fbAwaitGet(buildPath(_rcvIndex), dataBuf, (unsigned int)sizeof(dataBuf));
-            esp_task_wdt_reset();
-            applyReceivedData(_rcvIndex, dataBuf);
-            esp_task_wdt_reset();
-            _rcvIndex++;
-        } else {
-            // Concluiu todos os paths
-            fbSet(safeEmail + "/HasChange", String("false"));
-            data_class.setHasChange("false");
-            _rcvActive = false;
-            _rcvIndex  = -1;
-        }
+        esp_task_wdt_reset();
+        firebase->dbSet(safeEmail + "/HasChange", String("false"));
+        data_class.setHasChange("false");
+        _rcvActive = false;
+        display->drawBackGround();
         return;
     }
 
@@ -269,53 +341,47 @@ void sendAndReceiveData()
     if (millis() - lastSend >= 30000) {
         lastSend = millis();
 
-        if (data_class.getIsRunning()) {
-            static float last_sensors[4] = {-1,-1,-1,-1};
-            static bool  last_act[6]     = {false,false,false,false,false,false};
+        static const char* spaths[4] = {
+            "/Readings/Sensor/Temperature",
+            "/Readings/Sensor/Humidity",
+            "/Readings/Sensor/Soil",
+            "/Readings/Sensor/WaterReserv"
+        };
+        static const char* apaths[6] = {
+            "/Readings/Actuator/LightStatus",
+            "/Readings/Actuator/PumpStatus",
+            "/Readings/Actuator/CoolerStatus",
+            "/Readings/Actuator/HeaterStatus",
+            "/Readings/Actuator/HumidStatus",
+            "/Readings/Actuator/DehumidStatus"
+        };
 
-            // Paths como literais — sem alocação
-            static const char* spaths[4] = {
-                "/Readings/Sensor/Temperature",
-                "/Readings/Sensor/Humidity",
-                "/Readings/Sensor/Soil",
-                "/Readings/Sensor/WaterReserv"
-            };
-            static const char* apaths[6] = {
-                "/Readings/Actuator/LightStatus",
-                "/Readings/Actuator/PumpStatus",
-                "/Readings/Actuator/CoolerStatus",
-                "/Readings/Actuator/HeaterStatus",
-                "/Readings/Actuator/HumidStatus",
-                "/Readings/Actuator/DehumidStatus"
-            };
+        // Sensores: sempre envia a cada 30s (valor contínuo)
+        float sens[4] = {
+            data_class.getTemp(), data_class.getHumid(),
+            data_class.getCalibratedSoil(), data_class.getWaterCalibrated()
+        };
 
-            float sens[4] = {
-                data_class.getTemp(), data_class.getHumid(),
-                data_class.getCalibratedSoil(), data_class.getWaterCalibrated()
-            };
-            bool acts[6] = {
-                data_class.getLightStatus(), data_class.getPumpStatus(),
-                data_class.getCoolerStatus(), data_class.getHeaterStatus(),
-                data_class.getHumidStatus(), data_class.getDehumidStatus()
-            };
+        // Atuadores: só envia se mudou desde o último envio
+        bool acts[6] = {
+            data_class.getLightStatus(),   data_class.getPumpStatus(),
+            data_class.getCoolerStatus(),  data_class.getHeaterStatus(),
+            data_class.getHumidStatus(),   data_class.getDehumidStatus()
+        };
+        static bool last_acts[6] = {false, false, false, false, false, false};
 
-            // Monta path em buffer fixo — sem String temporária no loop
-            char fullPath[128];
-            for (int i = 0; i < 4; i++) {
-                if (sens[i] != last_sensors[i]) {
-                    snprintf(fullPath, sizeof(fullPath), "%s%s", safeEmail.c_str(), spaths[i]);
-                    fbSet(fullPath, sens[i]);
-                    last_sensors[i] = sens[i];
-                    esp_task_wdt_reset();
-                }
-            }
-            for (int j = 0; j < 6; j++) {
-                if (acts[j] != last_act[j]) {
-                    snprintf(fullPath, sizeof(fullPath), "%s%s", safeEmail.c_str(), apaths[j]);
-                    fbSet(fullPath, acts[j]);
-                    last_act[j] = acts[j];
-                    esp_task_wdt_reset();
-                }
+        char fullPath[128];
+        for (int i = 0; i < 4; i++) {
+            snprintf(fullPath, sizeof(fullPath), "%s%s", safeEmail.c_str(), spaths[i]);
+            firebase->dbSet(fullPath, sens[i]);
+            esp_task_wdt_reset();
+        }
+        for (int j = 0; j < 6; j++) {
+            if (acts[j] != last_acts[j]) {
+                snprintf(fullPath, sizeof(fullPath), "%s%s", safeEmail.c_str(), apaths[j]);
+                firebase->dbSet(fullPath, acts[j]);
+                last_acts[j] = acts[j];
+                esp_task_wdt_reset();
             }
         }
     }
@@ -328,12 +394,11 @@ void sendAndReceiveData()
     char hcBuf[16] = {};
     char hcPath[128];
     snprintf(hcPath, sizeof(hcPath), "%s/HasChange", safeEmail.c_str());
-    fbAwaitGet(hcPath, hcBuf, (unsigned int)sizeof(hcBuf));
+    firebase->awaitGet(hcPath, hcBuf, (unsigned int)sizeof(hcBuf));
     data_class.setHasChange(String(hcBuf));
 
     if (strcmp(hcBuf, "true") == 0) {
-        _rcvActive = true;
-        _rcvIndex  = 0;
+        _rcvActive    = true;
     }
 }
 
@@ -387,10 +452,11 @@ void initFirebaseStructure()
 
     String statusPathStr(statusPath);
     String statusResult;
-    fbAwaitGet(statusPathStr, &statusResult);
+    firebase->awaitGet(statusPathStr, &statusResult);
 
     String verStr = ota.getVersion();
-    fbSet(safeEmail + "/Version", verStr);
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/Version", verStr);
 
     if (statusResult == "true" || statusResult == "false") {
         display->logoScreen("Dados existentes carregados!");
@@ -401,33 +467,52 @@ void initFirebaseStructure()
     display->logoScreen("Primeiro acesso, criando estrutura...");
     esp_task_wdt_reset();
 
-    fbSet(safeEmail + "/Status", false);
-    fbSet(safeEmail + "/email",   wifi.getEmail());
-    fbSet(safeEmail + "/Version", verStr);
-    fbSet(safeEmail + "/InsertedData/Light/HourOn",  String("08:00"));
-    fbSet(safeEmail + "/InsertedData/Light/HourOff", String("22:00"));
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/Status", false);
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/email",   wifi.getEmail());
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/Version", verStr);
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/InsertedData/Light/HourOn",  String("08:00"));
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/InsertedData/Light/HourOff", String("22:00"));
     esp_task_wdt_reset();
 
-    fbSet(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp",    data_class.getTargetTemp());
-    fbSet(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", data_class.getTempTolerance());
-    fbSet(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid",         data_class.getTargetHumid());
-    fbSet(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance",      data_class.getHumidTolerance());
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp",    data_class.getTargetTemp());
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", data_class.getTempTolerance());
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid",         data_class.getTargetHumid());
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance",      data_class.getHumidTolerance());
     esp_task_wdt_reset();
 
-    fbSet(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil",       data_class.getTargetSoil());
-    fbSet(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance",    data_class.getSoilTolerance());
-    fbSet(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration",     data_class.getPumpDuration());
-    fbSet(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay",  data_class.getAbsorptionDelay());
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil",       data_class.getTargetSoil());
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance",    data_class.getSoilTolerance());
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration",     data_class.getPumpDuration());
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay",  data_class.getAbsorptionDelay());
     esp_task_wdt_reset();
 
-    fbSet(safeEmail + "/InsertedData/Sensor/Soil/Calibration/SoilSensor/Dry",  (float)data_class.getSoilLow());
-    fbSet(safeEmail + "/InsertedData/Sensor/Soil/Calibration/SoilSensor/Wet",  (float)data_class.getSoilUpper());
-    fbSet(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow",   data_class.getPumpFlow());
-    fbSet(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Behavior",        (float)data_class.getSoilBehavior());
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/InsertedData/Sensor/Soil/Calibration/SoilSensor/Dry",  (float)data_class.getSoilLow());
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/InsertedData/Sensor/Soil/Calibration/SoilSensor/Wet",  (float)data_class.getSoilUpper());
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow",   data_class.getPumpFlow());
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Behavior",        (float)data_class.getSoilBehavior());
     esp_task_wdt_reset();
 
-    fbSet(safeEmail + "/InsertedData/Sensor/WaterReserv/Calibration/Reserv",   data_class.getWaterRawReading());
-    fbSet(safeEmail + "/InsertedData/Sensor/WaterReserv/Calibration/Capacity", data_class.getWaterCapacity());
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/InsertedData/Sensor/WaterReserv/Calibration/Reserv",   data_class.getWaterRawReading());
+    esp_task_wdt_reset();
+    firebase->dbSet(safeEmail + "/InsertedData/Sensor/WaterReserv/Calibration/Capacity", data_class.getWaterCapacity());
 
     display->logoScreen("Estrutura criada com sucesso!");
     delay(1000);
@@ -437,223 +522,10 @@ void initFirebaseStructure()
 // ── firebaseTask ─────────────────────────────────────────────────────────────
 // Task dedicada ao Firebase. Roda no core 0, com watchdog próprio de 60s.
 // Isola qualquer bloqueio SSL do loopTask — se travar, só ela é reiniciada
-// via ESP.restart() após watchdog, sem corromper o stack do loop principal.
-//
-// Comunicação com o loopTask via fila _fbQueue:
-//   loopTask  →  fbSet/fbGet (enfileira FbCmd)
-//   firebaseTask  →  executa FBase::aSyncSet*/awaitGet
-//
-static void firebaseTask(void* pv)
-{
-    esp_task_wdt_add(NULL);
-    Serial.println("[fbTask] Iniciada no core 0");
-    _fbTaskAlive = true;
-
-    // Estado da máquina de reconexão
-    static unsigned long _lastAttempt  = 0;
-    static unsigned long _backoff      = 2000;
-    static unsigned long _wifiSince    = 0;
-    static bool          _wifiWas      = false;
-    static unsigned long _initDoneAt   = 0;  // quando o último init() OK terminou
-    static bool          _needsInit    = false;
-
-    FbCmd cmd;
-    while (true) {
-        esp_task_wdt_reset();
-
-        bool wifiOk = (WiFi.status() == WL_CONNECTED);
-
-        // ── Rastreia estabilidade do WiFi ────────────────────────────
-        if (!wifiOk) {
-            if (_wifiWas) {
-                _wifiWas  = false;
-                _needsInit = true;
-                Serial.println("[fbTask] WiFi caiu. Marcando para reconexao.");
-            }
-            vTaskDelay(pdMS_TO_TICKS(500));
-            continue;
-        }
-        if (!_wifiWas) {
-            _wifiSince = millis();
-            _wifiWas   = true;
-            Serial.println("[fbTask] WiFi conectado. Aguardando 3s...");
-        }
-        if (millis() - _wifiSince < 3000) {
-            vTaskDelay(pdMS_TO_TICKS(200));
-            continue;
-        }
-
-        // ── Decide se precisa reconectar ─────────────────────────────
-        // Usa isReady() (não isHealthy) — isHealthy exige ssl_client.connected()
-        // que só fica true após a primeira operação de dados, causando loop falso.
-        if (!firebase) {
-            vTaskDelay(pdMS_TO_TICKS(500));
-            continue;
-        }
-
-        // ── Todos os acessos ao firebase protegidos por mutex ────────
-        if (!xSemaphoreTake(_fbMutex, pdMS_TO_TICKS(200))) {
-            vTaskDelay(pdMS_TO_TICKS(10));
-            continue;
-        }
-        bool ready = firebase->isReady();
-        if (ready && millis() - _initDoneAt > 5000) {
-            if (!firebase->isHealthy()) {
-                Serial.println("[fbTask] Firebase caiu. Agendando reconexao.");
-                _needsInit = true;
-                ready = false;
-            }
-        }
-        xSemaphoreGive(_fbMutex);
-
-        if (!ready || _needsInit) {
-            if (millis() - _lastAttempt < _backoff) {
-                vTaskDelay(pdMS_TO_TICKS(100));
-                continue;
-            }
-            Serial.printf("[fbTask] Reconectando (backoff %lus)...\n", _backoff/1000);
-            esp_task_wdt_reset();
-            if (!xSemaphoreTake(_fbMutex, pdMS_TO_TICKS(5000))) {
-                vTaskDelay(pdMS_TO_TICKS(500));
-                continue;
-            }
-            if (firebase->isReady()) firebase->stopApp();
-            bool ok = firebase->init();
-            xSemaphoreGive(_fbMutex);
-            esp_task_wdt_reset();
-            if (ok) {
-                Serial.println("[fbTask] Firebase reconectado!");
-                _backoff    = 2000;
-                _needsInit  = false;
-                _initDoneAt = millis();
-                vTaskDelay(pdMS_TO_TICKS(2000));
-            } else {
-                _backoff = min(_backoff * 2, (unsigned long)64000);
-                _lastAttempt = millis();
-                Serial.printf("[fbTask] Falha. Proxima tentativa em %lus\n", _backoff/1000);
-            }
-            continue;
-        }
-
-        // ── Loop do Firebase ──────────────────────────────────────────
-        if (!xSemaphoreTake(_fbMutex, pdMS_TO_TICKS(200))) {
-            vTaskDelay(pdMS_TO_TICKS(10));
-            continue;
-        }
-        esp_task_wdt_reset();
-        firebase->loop();
-        esp_task_wdt_reset();
-        xSemaphoreGive(_fbMutex);
-
-        // ── Processa fila de comandos ─────────────────────────────────
-        if (_fbQueue && xQueueReceive(_fbQueue, &cmd, 0) == pdTRUE) {
-            if (!xSemaphoreTake(_fbMutex, pdMS_TO_TICKS(200))) continue;
-            if (firebase->isReady()) {
-                esp_task_wdt_reset();
-                switch (cmd.type) {
-                    case FB_SET_STRING:
-                        firebase->aSyncSetString(String(cmd.path), String(cmd.sval));
-                        break;
-                    case FB_SET_FLOAT:
-                        firebase->aSyncSetFloat(String(cmd.path), cmd.fval);
-                        break;
-                    case FB_SET_BOOL:
-                        firebase->aSyncSetBool(String(cmd.path), cmd.bval);
-                        break;
-                    default: break;
-                }
-                esp_task_wdt_reset();
-            }
-            xSemaphoreGive(_fbMutex);
-        } else {
-            vTaskDelay(pdMS_TO_TICKS(10));
-        }
-    }
-}
-
-// ── Helpers para enfileirar operações Firebase ────────────────────────────────
-// O loopTask usa estas funções em vez de chamar firebase-> diretamente.
-// São não-bloqueantes: apenas enfileiram o comando e retornam imediatamente.
-
-static void fbSet(const String& path, const String& val)
-{
-    if (!_fbQueue) return;
-    FbCmd cmd;
-    cmd.type = FB_SET_STRING;
-    strncpy(cmd.path, path.c_str(), sizeof(cmd.path) - 1);
-    strncpy(cmd.sval, val.c_str(),  sizeof(cmd.sval) - 1);
-    cmd.path[sizeof(cmd.path)-1] = 0;
-    cmd.sval[sizeof(cmd.sval)-1] = 0;
-    xQueueSend(_fbQueue, &cmd, 0);  // pdFALSE = descarta se fila cheia
-}
-
-static void fbSet(const String& path, float val)
-{
-    if (!_fbQueue) return;
-    FbCmd cmd;
-    cmd.type = FB_SET_FLOAT;
-    strncpy(cmd.path, path.c_str(), sizeof(cmd.path) - 1);
-    cmd.path[sizeof(cmd.path)-1] = 0;
-    cmd.fval = val;
-    xQueueSend(_fbQueue, &cmd, 0);
-}
-
-static void fbSet(const String& path, bool val)
-{
-    if (!_fbQueue) return;
-    FbCmd cmd;
-    cmd.type = FB_SET_BOOL;
-    strncpy(cmd.path, path.c_str(), sizeof(cmd.path) - 1);
-    cmd.path[sizeof(cmd.path)-1] = 0;
-    cmd.bval = val;
-    xQueueSend(_fbQueue, &cmd, 0);
-}
-
-// fbReady: o loopTask pode verificar se vale a pena enfileirar
-// fbLock/fbUnlock — usados pelo loopTask para acessar firebase com segurança
-// A firebaseTask usa o mesmo mutex antes de qualquer firebase->
-// fbTryLock — tenta adquirir o mutex SEM bloquear (timeout zero).
-// O loopTask NUNCA deve esperar pelo mutex — se a firebaseTask está ocupada,
-// descarta a operação e tenta na próxima iteração. Isso garante que
-// ButtonIdle, display e botões respondam sempre sem travamento.
-static bool fbTryLock()
-{
-    if (!_fbMutex) return false;
-    return xSemaphoreTake(_fbMutex, 0) == pdTRUE;
-}
-static void fbUnlock()
-{
-    if (_fbMutex) xSemaphoreGive(_fbMutex);
-}
-
-static bool fbReady()
-{
-    if (!firebase) return false;
-    if (!fbTryLock()) return false;  // se ocupado, reporta "não pronto"
-    bool r = firebase->isReady();
-    fbUnlock();
-    return r;
-}
-
-// fbAwaitGet — awaitGet não-bloqueante para o loopTask.
-// Se o mutex não estiver disponível, retorna sem fazer nada.
-static void fbAwaitGet(String path, String* result)
-{
-    if (!firebase || !fbTryLock()) return;
-    firebase->awaitGet(path, result);
-    fbUnlock();
-}
-static void fbAwaitGet(const char* path, char* buf, unsigned int len)
-{
-    if (!firebase || !fbTryLock()) return;
-    firebase->awaitGet(path, buf, len);
-    fbUnlock();
-}
-
 void wdt_conf()
 {
     esp_task_wdt_deinit();
-    esp_task_wdt_init(60, true);
+    esp_task_wdt_init(60, false);
     esp_task_wdt_add(NULL);
 }
 
@@ -698,7 +570,6 @@ void firebase_healthy_startup()
     }
 
     const int MAX_ATTEMPTS = 3;
-    const unsigned long OP_TIMEOUT = 20000;
     bool structureOk = false;
     bool receiveOk   = false;
 
@@ -706,21 +577,22 @@ void firebase_healthy_startup()
         esp_task_wdt_reset();
 
         if (!structureOk) {
-            unsigned long t = millis();
             display->logoScreen("Carregando estrutura... (" + String(attempt) + "/" + String(MAX_ATTEMPTS) + ")");
             initFirebaseStructure();
             esp_task_wdt_reset();
-            structureOk = (millis() - t < OP_TIMEOUT);
-            if (!structureOk) continue;
+            structureOk = true;
         }
 
         if (!receiveOk) {
-            unsigned long t = millis();
             display->logoScreen("Recebendo dados... (" + String(attempt) + "/" + String(MAX_ATTEMPTS) + ")");
-            receiveFirebaseData();
+            // Tenta receive rapido: 1 GET raiz + 3 GETs globais (~4 requisicoes)
+            // Fallback para receive lento (21 GETs) se o JSON falhar
+            if (!receiveFirebaseDataFast()) {
+                Serial.println("[Startup] Fast receive falhou, usando receive lento...");
+                receiveFirebaseData();
+            }
             esp_task_wdt_reset();
-            receiveOk = (millis() - t < OP_TIMEOUT);
-            if (!receiveOk) continue;
+            receiveOk = true;
         }
 
         if (structureOk && receiveOk) break;
@@ -729,9 +601,6 @@ void firebase_healthy_startup()
     if (!structureOk || !receiveOk) {
         display->logoScreen("Falha na inicializacao, continuando...");
         delay(2000);
-        // Reinicia apenas se o problema é no Firebase, não na rede
-        if (WiFi.status() == WL_CONNECTED)
-            ESP.restart();
     }
 
     display->logoScreen("Conectado ao banco de dados!");
@@ -852,8 +721,6 @@ void setup()
         // funcione corretamente durante receiveFirebaseData no boot.
         // A firebaseTask só é criada depois — durante o startup o mutex
         // fica livre e fbTryLock() retorna true normalmente.
-        if (!_fbQueue) _fbQueue = xQueueCreate(20, sizeof(FbCmd));
-        if (!_fbMutex) _fbMutex = xSemaphoreCreateMutex();
 
         firebase_healthy_startup();
     } else {
@@ -872,25 +739,9 @@ void setup()
     delay(1000);
     ota.fetchReleaseInfo();
 
-    // ── Lança a task dedicada do Firebase ────────────────────────────────────
-    // A partir daqui o Firebase roda em task separada (core 0).
-    // O loopTask (core 1) nunca mais chama firebase-> diretamente —
-    // usa fbSet() para enfileirar e fbReady() para verificar estado.
-    xTaskCreatePinnedToCore(
-        firebaseTask,   // função da task
-        "firebaseTask", // nome
-        8192,           // stack 8KB — SSL + mbedTLS precisam de espaço
-        NULL,
-        2,              // prioridade 2 > loopTask (1) para não perder eventos
-        NULL,
-        0               // core 0 — loopTask fica no core 1
-    );
-    Serial.println("[Setup] firebaseTask criada no core 0");
 }
 
-// ── firebaseReconnectLoop ────────────────────────────────────────────────────
-// Mantida por compatibilidade — reconexão agora gerenciada pela firebaseTask.
-void firebaseReconnectLoop() { }
+
 
 // ── loop ──────────────────────────────────────────────────────────────────────
 void loop()
@@ -901,7 +752,8 @@ void loop()
     if (wifi.getStatus() && rtc.getStatus())
         getNow();
 
-    // Firebase gerenciado pela firebaseTask — sem chamada aqui
+    // Renovar token Firebase periodicamente
+    if (firebase && firebase->isReady()) firebase->loop();
 
     ButtonIdle();
 
