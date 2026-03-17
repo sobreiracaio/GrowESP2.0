@@ -1,84 +1,79 @@
 #pragma once
 
-#define ENABLE_DATABASE
-#define ENABLE_USER_AUTH
-
-#include <FirebaseClient.h>
-#include <WiFiClientSecure.h>
 #include "Libraries.hpp"
+#include <HTTPClient.h>
+#include <WiFiClientSecure.h>
+#include <ArduinoJson.h>
 
-
-#define API_KEY "AIzaSyBZOxkbUT3b9COdhCqNul3kNy6HEuSU5S4"
 #define DATABASE_URL "https://growstation-183df-default-rtdb.firebaseio.com"
+#define API_KEY      "AIzaSyBZOxkbUT3b9COdhCqNul3kNy6HEuSU5S4"
+#define AUTH_URL     "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key="
+#define REFRESH_URL  "https://securetoken.googleapis.com/v1/token?key="
 
-#define INT 0
-#define FLOAT 1
+#define INT    0
+#define FLOAT  1
 #define STRING 2
-#define BOOL 3
-
-
+#define BOOL   3
 
 class FBase {
+public:
+    FBase(const String& api, const String& db_url,
+          const String& user_email, const String& user_password);
 
-    private:
-        String apiKey;
-        String dbUrl;
-        String email;
-        String password;
-        
-        UserAuth user_auth;
-        FirebaseApp app;
-        WiFiClientSecure ssl_client;
-        AsyncClientClass aClient;
-        RealtimeDatabase Database;
+    bool init();           // autentica e obtém idToken
+    bool stopApp();        // limpa estado
+    void safeStop();       // compatibilidade
+    bool isReady();        // token válido e WiFi ok
+    bool isHealthy();      // mesma coisa
+    void loop();           // renova token se necessário
+    bool isBusy();         // sempre false — REST é síncrono
+    bool hasCredentialError();
 
-        bool authenticated;
-        bool _credentialError = false;  // true quando Firebase retorna erro de autenticação (email/senha inválidos)
+    // GET — retorna o valor como String, vazio se falhou
+    bool dbGet(const String& path, String& result);
 
-        // flags e cache de operações pendentes
-        bool  _pendingFloat  = false;
-        bool  _pendingString = false;
-        bool  _pendingBool   = false;
-        bool  _lastBoolSet   = false;
+    // GET raw — retorna JSON bruto sem remover aspas (para nós com filhos)
+    bool dbGetRaw(const String& path, String& result);
 
-        char  _lastStringPath[128]  = "";
-        char  _lastStringValue[128] = "";
-        char  _lastFloatPath[128]   = "";
-        float _lastFloatValue       = -9999.0f;
-        char  _lastBoolPath[128]    = "";
-        bool  _lastBoolValue        = false;
+    // SET — envia valor para o path
+    bool dbSet(const String& path, const String& value);
+    bool dbSet(const String& path, float value);
+    bool dbSet(const String& path, bool value);
 
-        static void processData(AsyncResult &aResult);
-        static String *asyncTarget;
-        static FBase  *_instance;
+    // Compatibilidade com código existente
+    void awaitGet(String& path, String* result);
+    void awaitGet(const char* path, char* result, unsigned int resultSize);
 
-        static void _cbString(AsyncResult &aResult);
-        static void _cbFloat(AsyncResult &aResult);
-        static void _cbBool(AsyncResult &aResult);
-     
-    public:
+    void aSyncSetString(String path, String value);
+    void aSyncSetString(const char* path, const char* value);
+    void aSyncSetFloat(String path, float value);
+    void aSyncSetFloat(const char* path, float value);
+    void aSyncSetBool(String path, bool value);
+    void aSyncSetBool(const char* path, bool value);
 
-        FBase(const String& api, const String& db_url, const String& user_email, const String& user_password);
-        bool init();
-        bool stopApp();
-        void safeStop();           // fecha SSL com wdt_reset para evitar watchdog
-        bool isReady();
-        void loop();
-        bool isHealthy();
-        bool isBusy();
-        bool hasCredentialError();
+    void aSyncGet(String& path, String& result);
+    void awaitSet(String& path, String value, int type);
 
-        void awaitGet(String& path, String *result);
-        void awaitGet(const char* path, char* result, unsigned int resultSize);
-        void awaitSet(String &path, String value, int type);
+    bool hasCredentialError() const { return _credentialError; }
 
-        void aSyncSetString(String path, String value);
-        void aSyncSetString(const char* path, const char* value);
-        void aSyncSetFloat(String path, float value);
-        void aSyncSetFloat(const char* path, float value);
-        void aSyncSetBool(String path, bool value);
-        void aSyncSetBool(const char* path, bool value);
+private:
+    String _apiKey;
+    String _dbUrl;
+    String _email;
+    String _password;
 
-        void aSyncGet(String& path, String &result);
-        static void asyncCallback(AsyncResult &aResult);
+    String _idToken;
+    String _refreshToken;
+    unsigned long _tokenExpiry = 0;   // millis() quando expira
+
+    bool _ready           = false;
+    bool _credentialError = false;
+
+    bool authenticate();
+    bool refreshToken();
+    bool httpGet(const String& url, String& response);
+    bool httpPut(const String& url, const String& body, String& response);
+
+    String buildUrl(const String& path) const;
+    bool   ensureToken();
 };
