@@ -35,6 +35,17 @@ struct tm now       = {0};
 String    safeEmail = "";
 int       menu      = -1;
 
+// ── Wake request — setado pela ISR dos botões ─────────────────────────────────
+volatile bool _wakeRequest = false;
+
+void IRAM_ATTR onAnyButton()
+{
+    _wakeRequest = true;
+}
+
+// Macro: aborta sendAndReceiveData se usuário pressionou botão
+#define CHECK_WAKE() do { if (_wakeRequest) return; } while(0)
+
 // ── Receive ──────────────────────────────────────────────────────────────────
 static bool _rcvActive = false;
 
@@ -148,6 +159,12 @@ void initModules()
     ota.injectDisplay(display);
     for (int i = 0; i < 4; i++)
         button[i]->init();
+
+    // ISR para acordar tela imediatamente — FALLING pois pull-ups externos
+    attachInterrupt(digitalPinToInterrupt(BTN1), onAnyButton, FALLING);
+    attachInterrupt(digitalPinToInterrupt(BTN2), onAnyButton, FALLING);
+    attachInterrupt(digitalPinToInterrupt(BTN3), onAnyButton, FALLING);
+    attachInterrupt(digitalPinToInterrupt(BTN4), onAnyButton, FALLING);
 }
 
 // ── getNow ────────────────────────────────────────────────────────────────────
@@ -372,12 +389,14 @@ void sendAndReceiveData()
 
         char fullPath[128];
         for (int i = 0; i < 4; i++) {
+            CHECK_WAKE();
             snprintf(fullPath, sizeof(fullPath), "%s%s", safeEmail.c_str(), spaths[i]);
             firebase->dbSet(fullPath, sens[i]);
             esp_task_wdt_reset();
         }
         for (int j = 0; j < 6; j++) {
             if (acts[j] != last_acts[j]) {
+                CHECK_WAKE();
                 snprintf(fullPath, sizeof(fullPath), "%s%s", safeEmail.c_str(), apaths[j]);
                 firebase->dbSet(fullPath, acts[j]);
                 last_acts[j] = acts[j];
@@ -391,6 +410,7 @@ void sendAndReceiveData()
     if (millis() - lastHasChangeCheck < 15000) return;
     lastHasChangeCheck = millis();
 
+    CHECK_WAKE();
     char hcBuf[16] = {};
     char hcPath[128];
     snprintf(hcPath, sizeof(hcPath), "%s/HasChange", safeEmail.c_str());
@@ -398,7 +418,7 @@ void sendAndReceiveData()
     data_class.setHasChange(String(hcBuf));
 
     if (strcmp(hcBuf, "true") == 0) {
-        _rcvActive    = true;
+        _rcvActive = true;
     }
 }
 
@@ -411,10 +431,30 @@ void ButtonIdle()
 
     esp_task_wdt_reset();
 
-    bool idle = button[0]->getIdle() && button[1]->getIdle() &&
+    // ISR setou flag — inicia fade-in gradual e reseta idle de todos os botões
+    static bool waking = false;
+    if (_wakeRequest) {
+        _wakeRequest = false;
+        waking = true;
+        for (int i = 0; i < 4; i++)
+            button[i]->idleButton();
+        if (menu == -2) menu = -1;
+    }
+
+    bool idle = !waking &&
+                button[0]->getIdle() && button[1]->getIdle() &&
                 button[2]->getIdle() && button[3]->getIdle();
 
-    if (idle) {
+    if (waking) {
+        // Fade-in — mesmo ritmo do fade-out
+        if (brightness < 255 && millis() - lastStep > stepInterval) {
+            lastStep = millis();
+            brightness++;
+            ledcWrite(0, brightness);
+        }
+        if (brightness >= 255)
+            waking = false;
+    } else if (idle) {
         esp_task_wdt_reset();
         if (brightness > 0 && millis() - lastStep > stepInterval) {
             lastStep = millis();
