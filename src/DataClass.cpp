@@ -2,8 +2,6 @@
 
 DataClass::DataClass(Light *light, Preferences *preferences) : prefs(preferences)
 {
-    
-    
     temperature = 0;
     targetTemp = 30;
     tempTolerance = 2;
@@ -23,7 +21,7 @@ DataClass::DataClass(Light *light, Preferences *preferences) : prefs(preferences
     soil_calibrated_value = NOT_DEFINED;
 
     pumpFlow = 0;
-       
+
     dayTime[0] = 0;
     dayTime[1] = 0;
     nightTime[0] = 0;
@@ -32,10 +30,9 @@ DataClass::DataClass(Light *light, Preferences *preferences) : prefs(preferences
 
     WaterReserv = 0;
     water_raw_reading = NOT_DEFINED;
-    waterCapacity= NOT_DEFINED;
+    waterCapacity = NOT_DEFINED;
     water_calibrated_value = 0;
     ReservWarning = 0;
-    
 
     lightStatus = false;
     pumpStatus = false;
@@ -51,412 +48,175 @@ DataClass::DataClass(Light *light, Preferences *preferences) : prefs(preferences
     hasChange = "false";
 
     vpd = 0;
-
 }
 
+void DataClass::setTemp(float temp)          { temperature = temp; }
+void DataClass::setTargetTemp(float v)       { targetTemp = v; }
+void DataClass::setTempTolerance(float v)    { tempTolerance = v; }
+void DataClass::setHumid(float v)            { hum = v; }
+void DataClass::setTargetHumid(float v)      { targetHumid = v; }
+void DataClass::setHumidTolerance(float v)   { humidTolerance = v; }
+void DataClass::setSoil(float v)             { soilHum = v; }
+void DataClass::setTargetSoil(float v)       { targetSoil = v; }
+void DataClass::setSoilTolerance(float v)    { soilTolerance = v; }
+void DataClass::setPumpDuration(float v)     { pumpDuration = v; }
+void DataClass::setAbsorptionDelay(float v)  { absorptionDelay = v; }
+void DataClass::setSoilLow(int v)            { soil_low_raw = v; }
+void DataClass::setSoilUpper(int v)          { soil_upper_raw = v; }
+void DataClass::setSoilBehavior(int v)       { timer_or_sensor = v; }
+void DataClass::setPumpFlow(float v)         { pumpFlow = v; }
 
-
-
-
-void DataClass::setTemp(float temp)
-{
-   
-        temperature = temp;
-   
-}
-
-void DataClass::setTargetTemp(float target_temp)
-{
-   
-        targetTemp = target_temp;
-  
-}
-
-void DataClass::setTempTolerance(float temp_tol)
-{
-   
-        tempTolerance = temp_tol;
-        
-}
-
-void DataClass::setHumid(float humidity)
-{
-   
-        hum = humidity;
-        
-}
-
-void DataClass::setTargetHumid(float target_hum)
-{
-   
-        targetHumid = target_hum;
-        
-}
-
-void DataClass::setHumidTolerance(float hum_tol)
-{
-   
-        humidTolerance = hum_tol;
-        
-}
-
-
-
-void DataClass::setSoil(float soil)
-{
-    soilHum = soil;
-}
-
-void DataClass::setTargetSoil(float target_soil)
-{
-   
-        targetSoil = target_soil;
-        
-}
-
-void DataClass::setSoilTolerance(float soil_tol)
-{
-   
-        soilTolerance = soil_tol;
-        
-}
-
-void DataClass::setPumpDuration(float pump_duration)
-{
-   
-        pumpDuration = pump_duration;
-        
-}
-
-void DataClass::setAbsorptionDelay(float abs_delay)
-{
-   
-        absorptionDelay = abs_delay;
-        
-}
-
-float DataClass::getPumpFlow()
-{
-    return pumpFlow;
-}
-
-int DataClass::getSoilBehavior()
-{
-    return timer_or_sensor;
-}
-
-
-void DataClass::setSoilLow(int soil_low)
-{
-    soil_low_raw = soil_low;
-}
-
-void DataClass::setSoilUpper(int soil_upper)
-{
-    soil_upper_raw = soil_upper;
-}
-
-void DataClass::setSoilBehavior(int type)
-{
-    timer_or_sensor = type;
-}
-
-void DataClass::setPumpFlow(float new_flow)
-{
-    pumpFlow = new_flow;
-}
 void DataClass::setDayTime(int h, int m)
 {
-   
-        dayTime[0] = h;
-        dayTime[1] = m;
-        if (light != nullptr) {
-            light->setDay(h, m);
-        }
-        
+    dayTime[0] = h;
+    dayTime[1] = m;
+    if (light != nullptr) light->setDay(h, m);
 }
 
 void DataClass::setNightTime(int h, int m)
 {
-   
-        nightTime[0] = h;
-        nightTime[1] = m;
-        if (light != nullptr) {
-            light->setNight(h, m);
-        }
-        
+    nightTime[0] = h;
+    nightTime[1] = m;
+    if (light != nullptr) light->setNight(h, m);
 }
 
-void DataClass::setWaterRes(float value)
-{
-   
-        WaterReserv = value;
-        
-}
+void DataClass::setWaterRes(float v)         { WaterReserv = v; }
+void DataClass::setWaterCapacity(float v)    { waterCapacity = v; }
+void DataClass::setWaterRawReading(float v)  { water_raw_reading = v; }
+void DataClass::setReservWarning(float v)    { ReservWarning = v; }
+void DataClass::setLightStatus(bool v)       { lightStatus = v; }
+void DataClass::setPumpStatus(bool v)        { pumpStatus = v; }
+void DataClass::setCoolerStatus(bool v)      { coolerStatus = v; }
+void DataClass::setHeaterStatus(bool v)      { heaterStatus = v; }
+void DataClass::setHumidStatus(bool v)       { humidStatus = v; }
+void DataClass::setDehumidStatus(bool v)     { dehumidStatus = v; }
+void DataClass::setIsRunning(bool v)         { isRunning = v; }
+void DataClass::setHasChange(String v)       { hasChange = v; }
 
-void DataClass::setWaterCapacity(float new_capacity)
-{
-    waterCapacity = new_capacity;
-}
-
-
-void DataClass::setWaterRawReading(float raw_value)
-{
-    water_raw_reading = raw_value;
-}
-
-void DataClass::setReservWarning(float value)
-{
-   
-        ReservWarning = value;
-        
-}
-
-void DataClass::setLightStatus(bool status)
-{
-   
-        lightStatus = status;
-        
-}
-
-void DataClass::setPumpStatus(bool status)
-{
-   
-        pumpStatus = status;
-        
-}
-
-void DataClass::setCoolerStatus(bool status)
-{
-   
-        coolerStatus = status;
-        
-}
-
-void DataClass::setHeaterStatus(bool status)
-{
-   
-        heaterStatus = status;
-        
-}
-
-void DataClass::setHumidStatus(bool status)
-{
-   
-        humidStatus = status;
-        
-}
-
-void DataClass::setDehumidStatus(bool status)
-{
-   
-        dehumidStatus = status;
-        
-}
-
-
-//GETTERS
-
-float DataClass::getTemp()
-{
-   return roundf(temperature * 4.0f) / 4.0f;
-}
-
-float DataClass::getTargetTemp()
-{
-    return targetTemp;
-}
-
-float DataClass::getTempTolerance()
-{
-    return tempTolerance;
-}
-
-float DataClass::getHumid()
-{
-    return roundf(hum * 4.0f) / 4.0f;
-}
-
-float DataClass::getTargetHumid()
-{
-    return targetHumid;
-}
-
-float DataClass::getHumidTolerance()
-{
-    return humidTolerance;
-}
-
-float DataClass::getSoil()
-{
-    return soilHum;
-}
-
-int DataClass::getSoilLow()
-{
-    return soil_low_raw;
-}
-int DataClass::getSoilUpper()
-{
-    return soil_upper_raw;
-}
+float DataClass::getTemp()           { return roundf(temperature * 4.0f) / 4.0f; }
+float DataClass::getTargetTemp()     { return targetTemp; }
+float DataClass::getTempTolerance()  { return tempTolerance; }
+float DataClass::getHumid()          { return roundf(hum * 4.0f) / 4.0f; }
+float DataClass::getTargetHumid()    { return targetHumid; }
+float DataClass::getHumidTolerance() { return humidTolerance; }
+float DataClass::getSoil()           { return soilHum; }
+int   DataClass::getSoilLow()        { return soil_low_raw; }
+int   DataClass::getSoilUpper()      { return soil_upper_raw; }
+float DataClass::getTargetSoil()     { return targetSoil; }
+float DataClass::getSoilTolerance()  { return soilTolerance; }
+float DataClass::getPumpDuration()   { return pumpDuration; }
+float DataClass::getAbsorptionDelay(){ return absorptionDelay; }
+float DataClass::getPumpFlow()       { return pumpFlow; }
+int   DataClass::getSoilBehavior()   { return timer_or_sensor; }
 
 float DataClass::getCalibratedSoil()
 {
     if (soil_low_raw == NOT_DEFINED || soil_upper_raw == NOT_DEFINED || soil_low_raw == soil_upper_raw)
         return 0.0f;
-
-    float mapped_soil = map(getSoil(), getSoilLow(), getSoilUpper(), 0, 100);
-    
-    if(mapped_soil < 0)
-        mapped_soil = 0;
-    if(mapped_soil > 100)
-        mapped_soil = 100;
-        
-    return mapped_soil;
+    float mapped = map(getSoil(), getSoilLow(), getSoilUpper(), 0, 100);
+    if (mapped < 0)   mapped = 0;
+    if (mapped > 100) mapped = 100;
+    return mapped;
 }
 
-float DataClass::getTargetSoil()
-{
-    return targetSoil;
-}
+void DataClass::getDayTime(int *out)   { out[0] = dayTime[0];   out[1] = dayTime[1]; }
+void DataClass::getNightTime(int *out) { out[0] = nightTime[0]; out[1] = nightTime[1]; }
 
-float DataClass::getSoilTolerance()
-{
-    return soilTolerance;
-}
-
-float DataClass::getPumpDuration()
-{
-    return pumpDuration;
-}
-
-float DataClass::getAbsorptionDelay()
-{
-    return absorptionDelay;
-}
-
-void DataClass::getDayTime(int *out)
-{
-    out[0] = dayTime[0];
-    out[1] = dayTime[1];
-}
-
-void DataClass::getNightTime(int *out)
-{
-    out[0] = nightTime[0];
-    out[1] = nightTime[1];
-}
-
-float DataClass::getWaterRes()
-{
-    return WaterReserv;
-}
-
-float DataClass::getWaterCapacity()
-{
-    return waterCapacity;
-}
-
-float DataClass::getWaterRawReading()
-{
-    return water_raw_reading;
-}
+float DataClass::getWaterRes()         { return WaterReserv; }
+float DataClass::getWaterCapacity()    { return waterCapacity; }
+float DataClass::getWaterRawReading()  { return water_raw_reading; }
+float DataClass::getReservWarning()    { return ReservWarning; }
 
 float DataClass::getWaterCalibrated()
 {
     float raw = getWaterRes();
-    float min = 60.0f;
-    float max = getWaterRawReading();   // idealmente isso deveria ser fixo/calibrado
-
-    if (max <= min)
-        return 0.0f; // proteção contra divisão por zero
-
-    float percent = (raw - min) * 100.0f / (max - min);
-
-    // inverter escala (100 → 0)
-    percent = 100.0f - percent;
-
-    // limitar
-    if (percent < 0.0f)
-        percent = 0.0f;
-    if (percent > 100.0f)
-        percent = 100.0f;
-
-    return roundf(percent * 4.0f) / 4.0f;
+    float mn  = 60.0f;
+    float mx  = getWaterRawReading();
+    if (mx <= mn) return 0.0f;
+    float pct = 100.0f - (raw - mn) * 100.0f / (mx - mn);
+    if (pct < 0.0f)   pct = 0.0f;
+    if (pct > 100.0f) pct = 100.0f;
+    return roundf(pct * 4.0f) / 4.0f;
 }
 
-float DataClass::getReservWarning()
-{
-    return ReservWarning;
-}
-
-bool DataClass::getLightStatus()
-{
-    return lightStatus;
-}
-
-bool DataClass::getPumpStatus()
-{
-    return pumpStatus;
-}
-
-bool DataClass::getCoolerStatus()
-{
-    return coolerStatus;
-}
-
-bool DataClass::getHeaterStatus()
-{
-    return heaterStatus;
-}
-
-bool DataClass::getHumidStatus()
-{
-    return humidStatus;
-}
-
-bool DataClass::getDehumidStatus()
-{
-    return dehumidStatus;
-}
-
-bool DataClass::isSoilCalibrated()
-{
-    return soil_low_raw != -1 && soil_upper_raw != -1;
-}
-
-void DataClass::setIsRunning(bool stats)
-{
-   
-        isRunning = stats;
-        
-}
-
-bool DataClass::getIsRunning()
-{
-    return isRunning;
-}
-
-void DataClass::setHasChange(String new_status)
-{
-    hasChange = new_status;
-}
-String DataClass::getHasChange()
-{
-    return hasChange;
-}
+bool DataClass::getLightStatus()    { return lightStatus; }
+bool DataClass::getPumpStatus()     { return pumpStatus; }
+bool DataClass::getCoolerStatus()   { return coolerStatus; }
+bool DataClass::getHeaterStatus()   { return heaterStatus; }
+bool DataClass::getHumidStatus()    { return humidStatus; }
+bool DataClass::getDehumidStatus()  { return dehumidStatus; }
+bool DataClass::isSoilCalibrated()  { return soil_low_raw != -1 && soil_upper_raw != -1; }
+bool DataClass::getIsRunning()      { return isRunning; }
+String DataClass::getHasChange()    { return hasChange; }
 
 float DataClass::getVPD()
 {
-    float svp;
-    float vpd;
+    float svp = 0.6108f * exp((17.27f * temperature) / (temperature + 237.3f));
+    return svp * (1.0f - (hum / 100.0f));
+}
 
-    // Pressão de vapor saturado (kPa)
-    svp = 0.6108 * exp((17.27 * temperature) / (temperature + 237.3));
+// ── saveToPrefs ───────────────────────────────────────────────────────────────
+void DataClass::saveToPrefs()
+{
+    prefs->begin("idata", false);
+    prefs->putFloat("targetTemp",   targetTemp);
+    prefs->putFloat("tempTol",      tempTolerance);
+    prefs->putFloat("targetHumid",  targetHumid);
+    prefs->putFloat("humidTol",     humidTolerance);
+    prefs->putFloat("targetSoil",   targetSoil);
+    prefs->putFloat("soilTol",      soilTolerance);
+    prefs->putFloat("pumpDuration", pumpDuration);
+    prefs->putFloat("absDelay",     absorptionDelay);
+    prefs->putFloat("pumpFlow",     pumpFlow);
+    prefs->putInt  ("soilBehavior", timer_or_sensor);
+    prefs->putInt  ("soilLow",      soil_low_raw);
+    prefs->putInt  ("soilUpper",    soil_upper_raw);
+    prefs->putFloat("waterRaw",     water_raw_reading);
+    prefs->putFloat("waterCap",     waterCapacity);
+    prefs->putInt  ("dayH",         dayTime[0]);
+    prefs->putInt  ("dayM",         dayTime[1]);
+    prefs->putInt  ("nightH",       nightTime[0]);
+    prefs->putInt  ("nightM",       nightTime[1]);
+    prefs->putBool ("isRunning",    isRunning);
+    prefs->end();
+}
 
-    // Déficit de pressão de vapor
-    vpd = svp * (1.0 - (hum / 100.0));
+// ── loadFromPrefs ─────────────────────────────────────────────────────────────
+void DataClass::loadFromPrefs()
+{
+    prefs->begin("idata", true);
 
-    return vpd; // retorna em kPa
+    if (!prefs->isKey("targetTemp")) {
+        prefs->end();
+        Serial.println("[DataClass] Nenhum dado salvo, usando defaults.");
+        return;
+    }
+
+    targetTemp      = prefs->getFloat("targetTemp",   targetTemp);
+    tempTolerance   = prefs->getFloat("tempTol",      tempTolerance);
+    targetHumid     = prefs->getFloat("targetHumid",  targetHumid);
+    humidTolerance  = prefs->getFloat("humidTol",     humidTolerance);
+    targetSoil      = prefs->getFloat("targetSoil",   targetSoil);
+    soilTolerance   = prefs->getFloat("soilTol",      soilTolerance);
+    pumpDuration    = prefs->getFloat("pumpDuration", pumpDuration);
+    absorptionDelay = prefs->getFloat("absDelay",     absorptionDelay);
+    pumpFlow        = prefs->getFloat("pumpFlow",     pumpFlow);
+    timer_or_sensor = prefs->getInt  ("soilBehavior", timer_or_sensor);
+    soil_low_raw    = prefs->getInt  ("soilLow",      soil_low_raw);
+    soil_upper_raw  = prefs->getInt  ("soilUpper",    soil_upper_raw);
+    water_raw_reading = prefs->getFloat("waterRaw",   water_raw_reading);
+    waterCapacity   = prefs->getFloat("waterCap",     waterCapacity);
+    dayTime[0]      = prefs->getInt  ("dayH",         dayTime[0]);
+    dayTime[1]      = prefs->getInt  ("dayM",         dayTime[1]);
+    nightTime[0]    = prefs->getInt  ("nightH",       nightTime[0]);
+    nightTime[1]    = prefs->getInt  ("nightM",       nightTime[1]);
+    isRunning       = prefs->getBool ("isRunning",    isRunning);
+    prefs->end();
+
+    if (light != nullptr) {
+        light->setDay(dayTime[0], dayTime[1]);
+        light->setNight(nightTime[0], nightTime[1]);
+    }
+
+    Serial.println("[DataClass] Dados carregados das Preferences.");
 }

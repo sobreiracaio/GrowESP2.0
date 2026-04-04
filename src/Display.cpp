@@ -85,6 +85,15 @@ void Display::healthCheck()
 
 void Display::injectFBase(FBase *fbase) { firebase = fbase; }
 
+// Reseta o timer interno do pulseColorTimed — chame após setup longo
+// para evitar salto de animação no primeiro frame do menu
+static bool _pulseNeedsReset = false;
+
+void Display::resetPulseTimer()
+{
+    _pulseNeedsReset = true;
+}
+
 // ── Helpers de envio com verificação de mudança ───────────────────────────────
 // Só faz a requisição HTTP se o valor realmente mudou em relação ao getter atual
 void Display::_setFloatIfChanged(const String& path, float newVal, float curVal)
@@ -282,9 +291,16 @@ uint16_t Display::pulseColorTimed(uint16_t c1, uint16_t c2, float speed)
     static float t = 0.0f;
     static int dir = 1;
     static unsigned long last = 0;
+    static bool _pulseNeedsReset = false;
+
+    if (_pulseNeedsReset) {
+        last = millis();
+        _pulseNeedsReset = false;
+    }
 
     unsigned long now = millis();
     float dt = (now - last) / 1000.0f;
+    if (dt > 0.1f) dt = 0.1f;  // cap apenas no primeiro frame após reset
     last = now;
     t += dir * speed * dt;
 
@@ -440,6 +456,7 @@ void Display::monitorMenu(int *menu)
         sendPacket(STATUS0, is_running);
         waitBox(true);
         _setBoolIfChanged(safeEmail + "/Status", is_running, prev_running);
+        dataClass->saveToPrefs();
         waitBox(false);
     }
     if (btn[3]->read()) {
@@ -448,16 +465,16 @@ void Display::monitorMenu(int *menu)
     }
 
     int distance = 119;
-    static const char* gauge_labels[4] = {"Temperatura","Umidade","Solo","Reserv."};
-    static const char* gauge_units[4]  = {".C","%","%","%"};
+    static const char* gauge_labels[4] = {"Temperatura","Umidade","VPD","Reserv."};
+    static const char* gauge_units[4]  = {".C","%","kPa","%"};
     float gauge_values[4]     = {dataClass->getTemp(), dataClass->getHumid(),
-                                  dataClass->getCalibratedSoil(), dataClass->getWaterCalibrated()};
+                                  dataClass->getVPD(), dataClass->getWaterCalibrated()};
     float gauge_Tvalues[4]    = {dataClass->getTargetTemp(), dataClass->getTargetHumid(),
-                                  dataClass->getTargetSoil()==150 ? 0 : dataClass->getTargetSoil(), 0};
-    float gauge_Cvalues[4]    = {50, 100, 100, 100};
+                                  0, 0};
+    float gauge_Cvalues[4]    = {50, 100, 5, 100};
     float gauge_tolerances[4] = {dataClass->getTempTolerance(), dataClass->getHumidTolerance(),
-                                  dataClass->getSoilTolerance(), 0};
-    int gauge_options[4] = {1, 2, 0, 2};
+                                  0, 0};
+    int gauge_options[4] = {1, 2, 1, 2};
 
     for (int i = 0; i < 4; i++)
         drawArcGauge(60+(distance*i), 95, gauge_values[i], gauge_Tvalues[i],
@@ -503,13 +520,13 @@ void Display::lightMenu(int *menu)
         if (v < lo) v = hi;
     };
 
-    if (btn[0]->read()) {
+    if (btn[0]->read() || btn[0]->held()) {
         if (selection == 0) adjustVal(day[0],   -1, 0, 23);
         if (selection == 1) adjustVal(day[1],   -1, 0, 59);
         if (selection == 2) adjustVal(night[0], -1, 0, 23);
         if (selection == 3) adjustVal(night[1], -1, 0, 59);
     }
-    if (btn[1]->read()) {
+    if (btn[1]->read() || btn[1]->held()) {
         if (selection == 0) adjustVal(day[0],   +1, 0, 23);
         if (selection == 1) adjustVal(day[1],   +1, 0, 59);
         if (selection == 2) adjustVal(night[0], +1, 0, 23);
@@ -539,6 +556,7 @@ void Display::lightMenu(int *menu)
             dataClass->setNightTime(night[0], night[1]);
             waitBox(true);
             _setStringIfChanged(safeEmail + "/InsertedData/Light/HourOff", hour, prevHourOff);
+            dataClass->saveToPrefs();
             waitBox(false);
         }
     };
@@ -594,11 +612,11 @@ void Display::tempMenu(int *menu)
         if (v < lo) v = hi;
     };
 
-    if (btn[0]->read()) {
+    if (btn[0]->read() || btn[0]->held()) {
         if (selection == 0) { temp_value -= 0.5f; clamp(temp_value, 0, 60); }
         if (selection == 1) { tol_value  -= 0.5f; clamp(tol_value,  1, 10); }
     }
-    if (btn[1]->read()) {
+    if (btn[1]->read() || btn[1]->held()) {
         if (selection == 0) { temp_value += 0.5f; clamp(temp_value, 0, 60); }
         if (selection == 1) { tol_value  += 0.5f; clamp(tol_value,  1, 10); }
     }
@@ -610,6 +628,7 @@ void Display::tempMenu(int *menu)
             sendPacket(TT, temp_value);
             waitBox(true);
             _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp", temp_value, prev_tt);
+            dataClass->saveToPrefs();
             waitBox(false);
         }
         if (sel == 1) {
@@ -618,6 +637,7 @@ void Display::tempMenu(int *menu)
             sendPacket(TTOL, tol_value);
             waitBox(true);
             _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", tol_value, prev_ttol);
+            dataClass->saveToPrefs();
             waitBox(false);
         }
     };
@@ -661,11 +681,11 @@ void Display::humidMenu(int *menu)
         if (v > hi) v = lo; if (v < lo) v = hi;
     };
 
-    if (btn[0]->read()) {
+    if (btn[0]->read() || btn[0]->held()) {
         if (selection == 0) { humid_value -= 0.5f; clamp(humid_value, 0, 100); }
         if (selection == 1) { tol_value   -= 0.5f; clamp(tol_value,   1,  10); }
     }
-    if (btn[1]->read()) {
+    if (btn[1]->read() || btn[1]->held()) {
         if (selection == 0) { humid_value += 0.5f; clamp(humid_value, 0, 100); }
         if (selection == 1) { tol_value   += 0.5f; clamp(tol_value,   1,  10); }
     }
@@ -677,6 +697,7 @@ void Display::humidMenu(int *menu)
             sendPacket(TH, humid_value);
             waitBox(true);
             _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid", humid_value, prev_th);
+            dataClass->saveToPrefs();
             waitBox(false);
         }
         if (sel == 1) {
@@ -685,6 +706,7 @@ void Display::humidMenu(int *menu)
             sendPacket(HTOL, tol_value);
             waitBox(true);
             _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance", tol_value, prev_htol);
+            dataClass->saveToPrefs();
             waitBox(false);
         }
     };
@@ -737,13 +759,13 @@ void Display::soilMenuSensor(int *menu)
     topScreen("Rega e Bomba");
     botScreen(labels);
 
-    if (btn[0]->read()) {
+    if (btn[0]->read() || btn[0]->held()) {
         if (selection == 0) soil_value   -= 0.5f;
         if (selection == 1) pump_duration -= 1.0f;
         if (selection == 2) abs_delay     -= 1.0f;
         if (selection == 3) soil_tol      -= 0.5f;
     }
-    if (btn[1]->read()) {
+    if (btn[1]->read() || btn[1]->held()) {
         if (selection == 0) soil_value   += 0.5f;
         if (selection == 1) pump_duration += 1.0f;
         if (selection == 2) abs_delay     += 1.0f;
@@ -776,6 +798,7 @@ void Display::soilMenuSensor(int *menu)
             sendPacket(STOL, soil_tol);
             _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance", soil_tol, prev);
         }
+        dataClass->saveToPrefs();
         waitBox(false);
     };
 
@@ -834,11 +857,11 @@ void Display::soilMenuTimer(int *menu)
     topScreen("Rega e Bomba");
     botScreen(labels);
 
-    if (btn[0]->read()) {
+    if (btn[0]->read() || btn[0]->held()) {
         if (selection == 0) { abs_delay    -= 1; dataClass->setAbsorptionDelay(abs_delay*3600); }
         if (selection == 1) { pump_duration -= 1; dataClass->setPumpDuration(pump_duration); }
     }
-    if (btn[1]->read()) {
+    if (btn[1]->read() || btn[1]->held()) {
         if (selection == 0) { abs_delay    += 1; dataClass->setAbsorptionDelay(abs_delay*3600); }
         if (selection == 1) { pump_duration += 5; dataClass->setPumpDuration(pump_duration); }
     }
@@ -855,6 +878,7 @@ void Display::soilMenuTimer(int *menu)
             sendPacket(PD, dataClass->getPumpDuration());
             _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", pump_duration, dataClass->getPumpDuration());
         }
+        dataClass->saveToPrefs();
         waitBox(false);
         if (selection != 1) selection++;
         else { selection = 0; *menu = -1; }
@@ -1110,6 +1134,7 @@ void Display::wateringCalibScreen(int *menu)
             _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", 3600.0f, dataClass->getAbsorptionDelay());
             sendPacket(TS, dataClass->getTargetSoil());
         }
+        dataClass->saveToPrefs();
         waitBox(false);
         selection = 0; *menu = -2;
     }
@@ -1249,7 +1274,10 @@ void Display::updateConfScreen(int *menu)
     botScreen(label);
 
     if (btn[2]->read()) {
+        waitBox(true);
         ota->fetchReleaseInfo();
+        waitBox(false);
+        drawBackGround();
         if (selection == 1 && ota->getVersion() != ota->getReleaseTag())
             ota->updateDevice();
         if (selection != 1) selection++;
