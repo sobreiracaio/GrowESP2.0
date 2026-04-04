@@ -85,6 +85,13 @@ void Display::healthCheck()
 
 void Display::injectFBase(FBase *fbase) { firebase = fbase; }
 
+static bool _buttonScreenNeedsRedraw = true;
+
+void Display::invalidateButtonScreen()
+{
+    _buttonScreenNeedsRedraw = true;
+}
+
 // Reseta o timer interno do pulseColorTimed — chame após setup longo
 // para evitar salto de animação no primeiro frame do menu
 static bool _pulseNeedsReset = false;
@@ -171,7 +178,7 @@ void Display::waitBox(bool show)
 // pulsante nunca sobrepõe o texto e não há flicker.
 // Altura dos rects = fontHeight + 2px, clampada à área interna da caixa.
 void Display::boxButton(int x, int y, int w, int h, int color,
-                        const unsigned char *image,
+                        const uint16_t *image,
                         bool is_selected,
                         String text_top, String text_bot, int text_size)
 {
@@ -255,35 +262,82 @@ void Display::boxButton(int x, int y, int w, int h, int color,
         }
     }
 
-    if (image != NULL)
-        display->drawBitmap(x + (w-64)/2, y + 25, image, 64, 64, color);
+    if (image != NULL) {
+        // Normaliza pixels de borda/antialiasing para chroma key 0x2FE0
+        // Range: R<=6 AND (G>=13 OR (G>=2 AND B<=2))
+        static uint16_t imgBuf[64 * 64];
+        for (int i = 0; i < 64 * 64; i++) {
+            uint16_t col = pgm_read_word(&image[i]);
+            uint8_t r = (col >> 11) & 0x1F;
+            uint8_t g = (col >> 5)  & 0x3F;
+            uint8_t b =  col        & 0x1F;
+            imgBuf[i] = (r <= 6 && (g >= 13 || (g >= 2 && b <= 2))) ? 0x2FE0 : col;
+        }
+        display->pushImage(x + (w-64)/2, y + 25, 64, 64, imgBuf, (uint16_t)0x2FE0);
+    }
 }
 
 void Display::buttonScreen(String labels[2][4], int colors[2][4],
-                           const unsigned char *images[2][4],
+                           const uint16_t *images[2][4],
                            int *menu, int menu_nbr)
 {
     int distance_h = 113;
     int distance_v = 115;
     static int selection = 0;
+    static int lastSelection = -99;
+    static int lastMenuNbr = -1;
+    bool forceRedraw = _buttonScreenNeedsRedraw;
     int is_selected[2][4] = {{0,1,2,3},{4,5,6,7}};
+
+    // Se menu_nbr mudou (ex: calibração→configurações), reseta seleção e força redraw
+    if (lastMenuNbr != menu_nbr) {
+        selection = 0;
+        lastSelection = -99;
+        forceRedraw = true;
+        lastMenuNbr = menu_nbr;
+    }
 
     if (selection < 0) selection = menu_nbr;
     if (selection > menu_nbr) selection = 0;
 
-    if (btn[0]->read()) selection--;
-    if (btn[1]->read()) selection++;
-    if (btn[2]->read()) *menu = selection;
+    bool changed = false;
+    if (btn[0]->read()) { selection--; changed = true; }
+    if (btn[1]->read()) { selection++; changed = true; }
+    if (btn[2]->read()) { *menu = selection; forceRedraw = true; }
     if (btn[3]->read()) {
         if (selection != 0) selection = 0;
         else *menu = -1;
+        changed = true;
+        forceRedraw = true;
     }
 
-    for (int i = 0; i < 4; i++)
-        for (int j = 0; j < 2; j++)
-            boxButton(16 + (distance_h * i), 48 + (distance_v * j),
-                      108, 108, colors[j][i], images[j][i],
-                      selection == is_selected[j][i], "", labels[j][i]);
+    bool needsFullRedraw = forceRedraw || (lastSelection != selection) || changed;
+
+    // idx percorre linha a linha (j=0 primeiro, depois j=1)
+    // para que menu_nbr corresponda à ordem visual da grade
+    for (int j = 0; j < 2; j++) {
+        for (int i = 0; i < 4; i++) {
+            int idx = j * 4 + i;
+            if (idx > menu_nbr) continue;
+            bool sel = (selection == is_selected[j][i]);
+            bool prevSel = (lastSelection == is_selected[j][i]);
+            int bx = 16 + (distance_h * i);
+            int by = 48 + (distance_v * j);
+
+            if (needsFullRedraw) {
+                boxButton(bx, by, 108, 108, colors[j][i], images[j][i], sel, "", labels[j][i]);
+            } else {
+                if (sel || prevSel) {
+                    boxButton(bx, by, 108, 108, colors[j][i], images[j][i], sel, "", labels[j][i]);
+                }
+            }
+        }
+    }
+
+    if (needsFullRedraw) {
+        lastSelection = selection;
+        forceRedraw = false;
+    }
 }
 
 uint16_t Display::pulseColorTimed(uint16_t c1, uint16_t c2, float speed)
@@ -433,7 +487,7 @@ void Display::mainScreen(int *menu)
     String labels[2][4] = {{"Monitorar","Fotoperiodo","Temperatura","Umidade"},
                             {"Rega","Calibrar","Configuracoes",""}};
     int colors[2][4] = {{WHITE,YELLOW,RED,BLUE},{BROWN,ORANGE,PURPLE,DARK_GREY}};
-    const unsigned char *images[2][4] = {{monitorIcon,lightPeriodIcon,tempIcon,humidIcon},
+    const uint16_t *images[2][4] = {{monitorIcon,lightPeriodIcon,tempIcon,humidIcon},
                                           {wateringIcon,calibIcon,confIcon,NULL}};
     buttonScreen(labels, colors, images, menu, 6);
 }
@@ -907,7 +961,7 @@ void Display::calibrationScreen(int *menu)
     static int last_submenu = -2;
 
     if (submenu == -1) { submenu = -2; *menu = -1; }
-    if (submenu > 4)    submenu = -2;
+    if (submenu > 1)    submenu = -2;
 
     if (submenu != last_submenu) { drawBackGround(); last_submenu = submenu; }
 
@@ -916,16 +970,15 @@ void Display::calibrationScreen(int *menu)
         String label[4] = {"<", ">", "Selecionar", "Voltar"};
         topScreen("Menu Calibracao");
         botScreen(label);
-        String labels[2][4] = {{"Sensor Solo","Sensor Reserv.","Bomba","Rega"},{"Luz","","",""}};
-        int colors[2][4] = {{GREEN,YELLOW,RED,BLUE},{DARK_GREY,DARK_GREY,DARK_GREY,DARK_GREY}};
-        const unsigned char *images[2][4] = {{soilIcon,waterReservIcon,pumpIcon,wateringIcon},{NULL,NULL,NULL,NULL}};
-        buttonScreen(labels, colors, images, &submenu, 3);
+        String labels[2][4] = {{"Sensor Reserv.","Bomba","",""},{"","","",""}};
+        int colors[2][4] = {{YELLOW,RED,DARK_GREY,DARK_GREY},{DARK_GREY,DARK_GREY,DARK_GREY,DARK_GREY}};
+        const uint16_t *images[2][4] = {{waterReservIcon,pumpIcon,NULL,NULL},{NULL,NULL,NULL,NULL}};
+        buttonScreen(labels, colors, images, &submenu, 1);
         break;
     }
-    case 0: soilSensorCalibScreen(&submenu); break;
-    case 1: waterReservCalibScreen(&submenu); break;
-    case 2: pumpCalibScreen(&submenu); break;
-    case 3: wateringCalibScreen(&submenu); break;
+    case 0: waterReservCalibScreen(&submenu); break;
+    case 1: pumpCalibScreen(&submenu); break;
+    // soilSensorCalibScreen e wateringCalibScreen removidos — rega sempre por timer
     default: break;
     }
 }
@@ -1170,7 +1223,7 @@ void Display::setupScreen(int *menu)
         botScreen(label);
         String labels[2][4] = {{"WiFi","Relogio","Atualizacoes","Sobre"},{"","","",""}};
         int colors[2][4] = {{GREEN,YELLOW,RED,ORANGE},{DARK_GREY,DARK_GREY,DARK_GREY,DARK_GREY}};
-        const unsigned char *images[2][4] = {{wifiIcon,watchIcon,updateIcon,aboutIcon},{NULL,NULL,NULL,NULL}};
+        const uint16_t *images[2][4] = {{wifiIcon,watchIcon,updateIcon,aboutIcon},{NULL,NULL,NULL,NULL}};
         buttonScreen(labels, colors, images, &submenu, 3);
         break;
     }

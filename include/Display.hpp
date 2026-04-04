@@ -64,13 +64,13 @@ class Display {
 
         // boxButton com limpeza automática de texto — sem rebarbas
         void boxButton(int x, int y, int w, int h, int color,
-                       const unsigned char *image,
+                       const uint16_t *image,
                        bool is_selected = false,
                        String text_top = "", String text_bot = "",
                        int text_size = 2);
 
         void buttonScreen(String labels[2][4], int colors[2][4],
-                          const unsigned char *images[2][4],
+                          const uint16_t *images[2][4],
                           int *menu, int menu_nbr);
         void topScreen(String label = "");
         void botScreen(String labels[4]);
@@ -114,6 +114,7 @@ class Display {
         void wifiConnStatus();
         void qrScreen();
         void resetPulseTimer();
+        void invalidateButtonScreen();
 
         // Health check do ST7796 — chama no loop()
         bool isDisplayHealthy();
