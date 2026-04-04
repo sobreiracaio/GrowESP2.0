@@ -53,6 +53,11 @@ class Display {
         DataClass   *dataClass;
 
         uint16_t pulseColorTimed(uint16_t c1, uint16_t c2, float speed);
+
+        // Helpers de envio condicional — só fazem HTTP se o valor mudou
+        void _setFloatIfChanged(const String& path, float newVal, float curVal);
+        void _setStringIfChanged(const String& path, const String& newVal, const String& curVal);
+        void _setBoolIfChanged(const String& path, bool newVal, bool curVal);
         void drawArcGauge(int x, int y, float value, float targetValue,
                           float ceiling_value, float tolerance,
                           String label, String unit, int option = 0);
@@ -108,6 +113,11 @@ class Display {
         void connectionScreen(String label_1, String label_2);
         void wifiConnStatus();
         void qrScreen();
+
+        // Health check do ST7796 — chama no loop()
+        bool isDisplayHealthy();
+        bool recoverDisplay();
+        void healthCheck();
 
         int day[2];
         int night[2];
