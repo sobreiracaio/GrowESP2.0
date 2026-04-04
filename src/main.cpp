@@ -78,7 +78,7 @@ static const PathEntry _paths[] = {
     {"/InsertedData/Sensor/Soil/Calibration/SoilSensor/Dry",   true},
     {"/InsertedData/Sensor/Soil/Calibration/SoilSensor/Wet",   true},
     {"/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow",    true},
-    {"/InsertedData/Sensor/Soil/Calibration/Behavior",         true},
+    // Behavior removido — rega sempre por timer
     {"/InsertedData/Sensor/WaterReserv/Calibration/Reserv",    true},
     {"/InsertedData/Sensor/WaterReserv/Calibration/Capacity",  true},
     {"/Version",                                               true},
@@ -136,7 +136,7 @@ static void applyReceivedData(int i, const char* data)
         case 13: data_class.setSoilLow(atoi(data)); break;
         case 14: data_class.setSoilUpper(atoi(data)); break;
         case 15: data_class.setPumpFlow(atof(data)); break;
-        case 16: data_class.setSoilBehavior((int)atof(data)); break;
+        // case 16: Behavior removido — rega sempre por timer
         case 17: data_class.setWaterRawReading(atof(data)); break;
         case 18: data_class.setWaterCapacity(atof(data)); break;
         case 19: ota.setVersion(data); break;
@@ -589,7 +589,7 @@ void initFirebaseStructure()
     esp_task_wdt_reset();
     firebase->dbSet(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow",   data_class.getPumpFlow());
     esp_task_wdt_reset();
-    firebase->dbSet(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Behavior",        (float)data_class.getSoilBehavior());
+    // Behavior removido — rega sempre por timer
     esp_task_wdt_reset();
 
     esp_task_wdt_reset();
@@ -930,6 +930,7 @@ void loop()
 
     if (last_menu != menu) {
         display->drawBackGround();
+        display->invalidateButtonScreen();
         last_menu = menu;
     }
 
@@ -940,8 +941,7 @@ void loop()
         case  2: display->tempMenu(&menu);          break;
         case  3: display->humidMenu(&menu);         break;
         case  4:
-            if (data_class.getSoilBehavior() == SENSOR) display->soilMenuSensor(&menu);
-            if (data_class.getSoilBehavior() == TIMER)  display->soilMenuTimer(&menu);
+            display->soilMenuTimer(&menu);
             break;
         case  5: display->calibrationScreen(&menu); break;
         case  6: display->setupScreen(&menu);       break;
