@@ -16,9 +16,13 @@ class Button{
         unsigned long pressStartTime;
 
         unsigned long lastActivity = 0;
-        unsigned long idleTimeout = 60000; // 30s por exemplo
+        unsigned long idleTimeout = 60000;
         bool isIdle;
         bool longPressTriggered = false;
+
+        // held() — estado interno
+        unsigned long heldLastTick = 0;
+        bool heldActive = false;
 
     public:
         Button(uint8_t pin_number);
@@ -28,4 +32,8 @@ class Button{
         void idleButton();
         bool getIdle(unsigned long timeout = 60000);
         bool longPress(unsigned long holdTime = 3000);
+
+        // Retorna true a cada 'interval' ms enquanto o botão estiver pressionado.
+        // Ignora os primeiros 'delay' ms para não disparar no clique normal.
+        bool held(unsigned long interval = 250, unsigned long delay = 500);
 };

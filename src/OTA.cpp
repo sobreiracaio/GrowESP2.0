@@ -199,11 +199,17 @@ int OTA::updateDevice()
 
                             int barraAtual = (downloaded * barraTotal) / totalBytes;
                             if (barraAtual != lastBarra) {
-                                String barra = "[";
+                                // Barra fixa: sempre 20 blocos + percentual alinhado
+                                // Usa caractere de bloco solido e traco para tamanho constante
+                                String barra = "";
                                 for (int i = 0; i < barraTotal; i++)
-                                    barra += (i < barraAtual) ? "|" : " ";
-                                barra += "] " + String((downloaded * 100) / totalBytes) + "%";
-                                display->logoScreen(barra.c_str());
+                                    barra += (i < barraAtual) ? "#" : "-";
+                                int pct = (downloaded * 100) / totalBytes;
+                                // Percentual sempre 3 digitos para nao mudar posicao
+                                char pctBuf[8];
+                                snprintf(pctBuf, sizeof(pctBuf), " %3d%%", pct);
+                                barra += pctBuf;
+                                display->logoScreen(barra);
                                 lastBarra = barraAtual;
                             }
                         }

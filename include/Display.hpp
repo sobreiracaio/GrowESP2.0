@@ -113,6 +113,7 @@ class Display {
         void connectionScreen(String label_1, String label_2);
         void wifiConnStatus();
         void qrScreen();
+        void resetPulseTimer();
 
         // Health check do ST7796 — chama no loop()
         bool isDisplayHealthy();

@@ -13,6 +13,9 @@
 
 
 // ── Forward declarations ──────────────────────────────────────────────────────
+static bool _firebaseReady = false;
+bool hasInternet();
+void firebase_healthy_startup();
 
 
 
@@ -45,6 +48,9 @@ void IRAM_ATTR onAnyButton()
 
 // Macro: aborta sendAndReceiveData se usuário pressionou botão
 #define CHECK_WAKE() do { if (_wakeRequest) return; } while(0)
+
+// Flag que indica setup concluído — segura o menu até tudo estar pronto
+static bool _setupDone = false;
 
 // ── Receive ──────────────────────────────────────────────────────────────────
 static bool _rcvActive = false;
@@ -195,10 +201,13 @@ void sendDataStartUP()
         (float)data_class.getIsRunning()
     };
 
+    // Envia pacotes com throttle não-bloqueante — sendPacket já tem 50ms interno
+    // mas como são IDs diferentes o throttle não bloqueia, apenas garante espaçamento
     for (int i = 0; i < 10; i++) {
         esp_task_wdt_reset();
+        unsigned long t = millis();
+        while (millis() - t < 60) { esp_task_wdt_reset(); yield(); }
         sendPacket(arrID[i], arrVal[i]);
-        delay(500);
     }
     sendPacket(PUMP_CAL, false);
 }
@@ -221,7 +230,7 @@ bool receiveFirebaseDataFast()
 
     // Parse do JSON do usuário com ArduinoJson
     // O nó raiz pode ter ~2KB — DynamicJsonDocument com 4KB é suficiente
-    DynamicJsonDocument doc(2048);
+    JsonDocument doc;
     DeserializationError err = deserializeJson(doc, userJson);
     if (err) {
         Serial.printf("[RCV Fast] JSON parse erro: %s\n", err.c_str());
@@ -327,6 +336,43 @@ void receiveFirebaseData()
     }
 }
 
+// ── sendActuatorsIfChanged ───────────────────────────────────────────────────
+// Chamado a cada loop — envia imediatamente ao Firebase se algum atuador mudou.
+// Independente do throttle de 30s dos sensores.
+void sendActuatorsIfChanged()
+{
+    if (!wifi.getStatus()) return;
+    if (!firebase->isReady()) return;
+    if (ESP.getMaxAllocHeap() < 20000) return;
+
+    static const char* apaths[6] = {
+        "/Readings/Actuator/LightStatus",
+        "/Readings/Actuator/PumpStatus",
+        "/Readings/Actuator/CoolerStatus",
+        "/Readings/Actuator/HeaterStatus",
+        "/Readings/Actuator/HumidStatus",
+        "/Readings/Actuator/DehumidStatus"
+    };
+
+    bool acts[6] = {
+        data_class.getLightStatus(),   data_class.getPumpStatus(),
+        data_class.getCoolerStatus(),  data_class.getHeaterStatus(),
+        data_class.getHumidStatus(),   data_class.getDehumidStatus()
+    };
+    static bool last_acts[6] = {false, false, false, false, false, false};
+
+    char fullPath[128];
+    for (int j = 0; j < 6; j++) {
+        if (acts[j] != last_acts[j]) {
+            CHECK_WAKE();
+            snprintf(fullPath, sizeof(fullPath), "%s%s", safeEmail.c_str(), apaths[j]);
+            firebase->dbSet(fullPath, acts[j]);
+            last_acts[j] = acts[j];
+            esp_task_wdt_reset();
+        }
+    }
+}
+
 // ── sendAndReceiveData ────────────────────────────────────────────────────────
 void sendAndReceiveData()
 {
@@ -340,7 +386,6 @@ void sendAndReceiveData()
     if (_rcvActive) {
         if (WiFi.status() != WL_CONNECTED) { _rcvActive = false; return; }
         display->logoScreen("Atualizando dados...");
-        // Usa receive rapido (1 GET raiz + 3 globais) em vez de 21 GETs individuais
         if (!receiveFirebaseDataFast()) {
             Serial.println("[HasChange] Fast receive falhou, usando receive lento...");
             receiveFirebaseData();
@@ -353,61 +398,37 @@ void sendAndReceiveData()
         return;
     }
 
-    // ── FASE SEND (throttle 30s) ──────────────────────────────────────
+    // ── FASE SEND sensores (throttle 30s) ─────────────────────────────
     static unsigned long lastSend = 0;
-    if (millis() - lastSend >= 30000) {
+    if (millis() - lastSend >= 60000) {
         lastSend = millis();
 
-        static const char* spaths[4] = {
+        static const char* spaths[5] = {
             "/Readings/Sensor/Temperature",
             "/Readings/Sensor/Humidity",
             "/Readings/Sensor/Soil",
-            "/Readings/Sensor/WaterReserv"
-        };
-        static const char* apaths[6] = {
-            "/Readings/Actuator/LightStatus",
-            "/Readings/Actuator/PumpStatus",
-            "/Readings/Actuator/CoolerStatus",
-            "/Readings/Actuator/HeaterStatus",
-            "/Readings/Actuator/HumidStatus",
-            "/Readings/Actuator/DehumidStatus"
+            "/Readings/Sensor/WaterReserv",
+            "/Readings/Sensor/VPD"
         };
 
-        // Sensores: sempre envia a cada 30s (valor contínuo)
-        float sens[4] = {
+        float sens[5] = {
             data_class.getTemp(), data_class.getHumid(),
-            data_class.getCalibratedSoil(), data_class.getWaterCalibrated()
+            data_class.getCalibratedSoil(), data_class.getWaterCalibrated(),
+            data_class.getVPD()
         };
-
-        // Atuadores: só envia se mudou desde o último envio
-        bool acts[6] = {
-            data_class.getLightStatus(),   data_class.getPumpStatus(),
-            data_class.getCoolerStatus(),  data_class.getHeaterStatus(),
-            data_class.getHumidStatus(),   data_class.getDehumidStatus()
-        };
-        static bool last_acts[6] = {false, false, false, false, false, false};
 
         char fullPath[128];
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             CHECK_WAKE();
             snprintf(fullPath, sizeof(fullPath), "%s%s", safeEmail.c_str(), spaths[i]);
             firebase->dbSet(fullPath, sens[i]);
             esp_task_wdt_reset();
         }
-        for (int j = 0; j < 6; j++) {
-            if (acts[j] != last_acts[j]) {
-                CHECK_WAKE();
-                snprintf(fullPath, sizeof(fullPath), "%s%s", safeEmail.c_str(), apaths[j]);
-                firebase->dbSet(fullPath, acts[j]);
-                last_acts[j] = acts[j];
-                esp_task_wdt_reset();
-            }
-        }
     }
 
     // ── VERIFICAR HasChange (throttle 15s) ────────────────────────────
     static unsigned long lastHasChangeCheck = 0;
-    if (millis() - lastHasChangeCheck < 15000) return;
+    if (millis() - lastHasChangeCheck < 60000) return;
     lastHasChangeCheck = millis();
 
     CHECK_WAKE();
@@ -462,12 +483,34 @@ void ButtonIdle()
             ledcWrite(0, brightness);
         }
 
-        for (int i = 0; i < 4; i++) {
+        for (int i = 0; i < 5; i++) {
             if (button[i]->read()) break;
         }
 
         if (brightness == 0) {
             menu = -2;
+
+            // Renovação de token só com tela apagada
+            if (_setupDone && firebase && firebase->isReady()) firebase->loop();
+
+            // Retentativa de Firebase em background
+            if (_setupDone && !_firebaseReady && wifi.getStatus()) {
+                static unsigned long lastRetry = 0;
+                if (lastRetry == 0) lastRetry = millis();
+                if (millis() - lastRetry > 60000UL) {
+                    lastRetry = millis();
+                    Serial.println("[Firebase] Tentando conectar em background...");
+                    if (hasInternet()) {
+                        firebase_healthy_startup();
+                        if (_firebaseReady) {
+                            Serial.println("[Firebase] Conectado em background!");
+                            display->drawBackGround();
+                        }
+                    }
+                }
+            }
+
+            display->healthCheck();
             sendAndReceiveData();
             esp_task_wdt_reset();
             wifi.loop();
@@ -569,6 +612,23 @@ void wdt_conf()
     esp_task_wdt_add(NULL);
 }
 
+// ── Checagem de internet real (além do WiFi) ──────────────────────────────────
+// Tenta TCP connect na porta 53 do 8.8.8.8 (DNS Google).
+// Não usa ICMP — funciona no ESP32 sem permissões especiais.
+// Timeout de 3s para não bloquear muito o boot.
+bool hasInternet()
+{
+    if (WiFi.status() != WL_CONNECTED) return false;
+    WiFiClient client;
+    client.setTimeout(3000);
+    bool ok = client.connect(IPAddress(8,8,8,8), 53);
+    if (ok) client.stop();
+    return ok;
+}
+
+// ── Flag de Firebase inicializado ─────────────────────────────────────────────
+// (declarada como forward declaration no topo do arquivo)
+
 // ── firebase_healthy_startup ──────────────────────────────────────────────────
 void firebase_healthy_startup()
 {
@@ -625,12 +685,14 @@ void firebase_healthy_startup()
 
         if (!receiveOk) {
             display->logoScreen("Recebendo dados... (" + String(attempt) + "/" + String(MAX_ATTEMPTS) + ")");
-            // Tenta receive rapido: 1 GET raiz + 3 GETs globais (~4 requisicoes)
-            // Fallback para receive lento (21 GETs) se o JSON falhar
-            if (!receiveFirebaseDataFast()) {
+            bool fastOk = receiveFirebaseDataFast();
+            if (!fastOk) {
                 Serial.println("[Startup] Fast receive falhou, usando receive lento...");
                 receiveFirebaseData();
             }
+            Serial.printf("[Startup] Receive %s | TargetHumid=%.1f TargetTemp=%.1f\n",
+                fastOk ? "fast" : "slow",
+                data_class.getTargetHumid(), data_class.getTargetTemp());
             esp_task_wdt_reset();
             receiveOk = true;
         }
@@ -643,7 +705,10 @@ void firebase_healthy_startup()
         delay(2000);
     }
 
+    data_class.saveToPrefs();
+    Serial.println("[Boot] Dados salvos nas Preferences apos receive.");
     display->logoScreen("Conectado ao banco de dados!");
+    _firebaseReady = true;
 }
 
 // ── heapMonitor ───────────────────────────────────────────────────────────────
@@ -757,12 +822,26 @@ void setup()
         safeEmail = wifi.getEmail();
         safeEmail.replace(".", "_");
 
-        // Criar fila e mutex ANTES do startup para que fbAwaitGet
-        // funcione corretamente durante receiveFirebaseData no boot.
-        // A firebaseTask só é criada depois — durante o startup o mutex
-        // fica livre e fbTryLock() retorna true normalmente.
-
-        firebase_healthy_startup();
+        // Verifica se há internet real antes de tentar Firebase
+        if (hasInternet()) {
+            // Firebase tem prioridade — Preferences só como fallback
+            firebase_healthy_startup();
+            if (!_firebaseReady) {
+                // Firebase falhou — carrega Preferences como fallback
+                data_class.loadFromPrefs();
+                data_class.getDayTime(display->day);
+                data_class.getNightTime(display->night);
+                Serial.println("[Boot] Firebase falhou, usando Preferences como fallback.");
+            }
+        } else {
+            // Sem internet — carrega Preferences imediatamente
+            data_class.loadFromPrefs();
+            data_class.getDayTime(display->day);
+            data_class.getNightTime(display->night);
+            Serial.println("[Boot] Sem internet. Usando Preferences como fallback.");
+            display->logoScreen("Sem internet. Dados locais carregados!");
+            delay(2000);
+        }
     } else {
         display->logoScreen("Internet nao configurada, indo para configuracao");
         menu = 6;
@@ -776,9 +855,9 @@ void setup()
     sendDataStartUP();
 
     display->logoScreen("Versao: " + ota.getVersion());
-    delay(1000);
     ota.fetchReleaseInfo();
-
+    display->resetPulseTimer();
+    _setupDone = true;
 }
 
 
@@ -792,9 +871,31 @@ void loop()
     if (wifi.getStatus() && rtc.getStatus())
         getNow();
 
-    // Renovar token Firebase periodicamente
-    if (firebase && firebase->isReady()) firebase->loop();
+    // Renovar token Firebase periodicamente — só após setup completo
+    if (_setupDone && firebase && firebase->isReady()) firebase->loop();
 
+    // ── Retentativa de Firebase em background ─────────────────────────────────
+    // Se o startup falhou por falta de internet, tenta novamente a cada 60s
+    // sem bloquear o loop — o equipamento opera normalmente com dados locais
+    if (_setupDone && !_firebaseReady && wifi.getStatus()) {
+        static unsigned long lastRetry = 0;
+        // Inicializa com millis() para evitar disparo imediato no primeiro frame
+        if (lastRetry == 0) lastRetry = millis();
+        if (millis() - lastRetry > 60000UL) {
+            lastRetry = millis();
+            Serial.println("[Firebase] Tentando conectar em background...");
+            if (hasInternet()) {
+                firebase_healthy_startup();
+                if (_firebaseReady) {
+                    Serial.println("[Firebase] Conectado em background!");
+                    display->drawBackGround();
+                }
+            }
+        }
+    }
+
+    sendActuatorsIfChanged();
+    sendActuatorsIfChanged();
     ButtonIdle();
 
     // Leitura serial — janela de 50ms para não bloquear
@@ -846,4 +947,5 @@ void loop()
         case  6: display->setupScreen(&menu);       break;
         default: break;
     }
+
 }

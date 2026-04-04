@@ -159,6 +159,10 @@ class DataClass {
         String getHasChange();
         
         float getVPD();
+
+        // Persistência local — salva/carrega InsertedData nas Preferences
+        void saveToPrefs();
+        void loadFromPrefs();
         
         
         
