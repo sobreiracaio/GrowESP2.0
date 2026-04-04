@@ -24,7 +24,86 @@ bool Display::initDisplay()
     return true;
 }
 
+// ── Display health check ──────────────────────────────────────────────────────
+// ST7796: comando 0x0A (Read Display Power Mode)
+// Byte saudavel: 0x9C (Sleep Out + Display On + Normal Mode)
+// 0x00 ou 0xFF indicam falha de conexao fisica ou controlador morto.
+bool Display::isDisplayHealthy()
+{
+    uint8_t mode = display->readcommand8(0x0A);
+    return (mode != 0x00 && mode != 0xFF);
+}
+
+// Tenta ressuscitar o display ate MAX_ATTEMPTS vezes.
+// Se recuperar, redesenha o fundo e retorna true.
+// Se nao recuperar, loga e retorna false — o sistema segue sem travar.
+bool Display::recoverDisplay()
+{
+    const int MAX_ATTEMPTS = 3;
+    for (int i = 0; i < MAX_ATTEMPTS; i++) {
+        Serial.printf("[DISPLAY] Tentativa de recuperacao %d/%d...\n", i+1, MAX_ATTEMPTS);
+        display->init();
+        display->setRotation(1);
+        display->setSwapBytes(true);
+        ledcWrite(0, 255);
+        esp_task_wdt_reset();
+        if (isDisplayHealthy()) {
+            Serial.println("[DISPLAY] Recuperado com sucesso.");
+            display->fillScreen(BLACK);
+            drawBackGround();
+            return true;
+        }
+    }
+    Serial.println("[DISPLAY] Falha permanente — sem recuperacao.");
+    return false;
+}
+
+// Chama quando a tela esta apagada — intervalo de 1 hora.
+// Leitura tripla sem delay — apenas reset do WDT entre leituras.
+// Nao chamar com tela acesa para evitar interferencia visual.
+void Display::healthCheck()
+{
+    static unsigned long lastCheck = 0;
+    unsigned long now = millis();
+
+    if (now - lastCheck < 3600000UL) return;
+    lastCheck = now;
+
+    // Leitura tripla — considera falha apenas se 2 de 3 leituras forem ruins
+    int falhas = 0;
+    for (int i = 0; i < 3; i++) {
+        uint8_t mode = display->readcommand8(0x0A);
+        if (mode == 0x00 || mode == 0xFF) falhas++;
+        esp_task_wdt_reset();
+    }
+
+    if (falhas >= 2) {
+        Serial.printf("[DISPLAY] Anomalia detectada (%d/3 leituras ruins), tentando recuperar...\n", falhas);
+        recoverDisplay();
+    }
+}
+
 void Display::injectFBase(FBase *fbase) { firebase = fbase; }
+
+// ── Helpers de envio com verificação de mudança ───────────────────────────────
+// Só faz a requisição HTTP se o valor realmente mudou em relação ao getter atual
+void Display::_setFloatIfChanged(const String& path, float newVal, float curVal)
+{
+    if (fabsf(newVal - curVal) < 0.001f) return;
+    firebase->aSyncSetFloat(path, newVal);
+}
+
+void Display::_setStringIfChanged(const String& path, const String& newVal, const String& curVal)
+{
+    if (newVal == curVal) return;
+    firebase->aSyncSetString(path, newVal);
+}
+
+void Display::_setBoolIfChanged(const String& path, bool newVal, bool curVal)
+{
+    if (newVal == curVal) return;
+    firebase->aSyncSetBool(path, newVal);
+}
 
 void Display::logoScreen(String text)
 {
@@ -355,11 +434,12 @@ void Display::monitorMenu(int *menu)
     botScreen(labels);
 
     if (btn[2]->read()) {
-        is_running = !is_running;
+        bool prev_running = dataClass->getIsRunning();
+        is_running = !prev_running;
         dataClass->setIsRunning(is_running);
         sendPacket(STATUS0, is_running);
         waitBox(true);
-        firebase->aSyncSetBool(safeEmail + "/Status", is_running);
+        _setBoolIfChanged(safeEmail + "/Status", is_running, prev_running);
         waitBox(false);
     }
     if (btn[3]->read()) {
@@ -445,16 +525,20 @@ void Display::lightMenu(int *menu)
     auto confirmLight = [&](int sel) {
         String hour;
         if (sel == 0 || sel == 1) {
-            dataClass->setDayTime(day[0], day[1]);
+            int d[2]; dataClass->getDayTime(d);
             hour = buildHour(day[0], day[1]);
+            String prevHourOn = buildHour(d[0], d[1]);
+            dataClass->setDayTime(day[0], day[1]);
             waitBox(true);
-            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOn", hour);
+            _setStringIfChanged(safeEmail + "/InsertedData/Light/HourOn", hour, prevHourOn);
             waitBox(false);
         } else {
-            dataClass->setNightTime(night[0], night[1]);
+            int n[2]; dataClass->getNightTime(n);
             hour = buildHour(night[0], night[1]);
+            String prevHourOff = buildHour(n[0], n[1]);
+            dataClass->setNightTime(night[0], night[1]);
             waitBox(true);
-            firebase->aSyncSetString(safeEmail + "/InsertedData/Light/HourOff", hour);
+            _setStringIfChanged(safeEmail + "/InsertedData/Light/HourOff", hour, prevHourOff);
             waitBox(false);
         }
     };
@@ -521,17 +605,19 @@ void Display::tempMenu(int *menu)
 
     auto confirmTemp = [&](int sel) {
         if (sel == 0) {
+            float prev_tt = dataClass->getTargetTemp();
             dataClass->setTargetTemp(temp_value);
             sendPacket(TT, temp_value);
             waitBox(true);
-            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp", temp_value);
+            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Temperature/TargetTemp", temp_value, prev_tt);
             waitBox(false);
         }
         if (sel == 1) {
+            float prev_ttol = dataClass->getTempTolerance();
             dataClass->setTempTolerance(tol_value);
             sendPacket(TTOL, tol_value);
             waitBox(true);
-            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", tol_value);
+            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Temperature/TempTolerance", tol_value, prev_ttol);
             waitBox(false);
         }
     };
@@ -586,17 +672,19 @@ void Display::humidMenu(int *menu)
 
     auto confirmHumid = [&](int sel) {
         if (sel == 0) {
+            float prev_th = dataClass->getTargetHumid();
             dataClass->setTargetHumid(humid_value);
             sendPacket(TH, humid_value);
             waitBox(true);
-            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid", humid_value);
+            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Humid/TargetHumid", humid_value, prev_th);
             waitBox(false);
         }
         if (sel == 1) {
+            float prev_htol = dataClass->getHumidTolerance();
             dataClass->setHumidTolerance(tol_value);
             sendPacket(HTOL, tol_value);
             waitBox(true);
-            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance", tol_value);
+            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Humid/HumidTolerance", tol_value, prev_htol);
             waitBox(false);
         }
     };
@@ -665,24 +753,28 @@ void Display::soilMenuSensor(int *menu)
     auto confirmSoil = [&](int sel) {
         waitBox(true);
         if (sel == 0) {
+            float prev = dataClass->getTargetSoil();
             dataClass->setTargetSoil(soil_value);
             sendPacket(TS, soil_value);
-            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil", soil_value);
+            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/TargetSoil", soil_value, prev);
         }
         if (sel == 1) {
+            float prev = dataClass->getPumpDuration();
             dataClass->setPumpDuration(pump_duration);
             sendPacket(PD, pump_duration);
-            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", pump_duration);
+            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", pump_duration, prev);
         }
         if (sel == 2) {
+            float prev = dataClass->getAbsorptionDelay();
             dataClass->setAbsorptionDelay(abs_delay);
             sendPacket(AD, abs_delay);
-            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", abs_delay);
+            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", abs_delay, prev);
         }
         if (sel == 3) {
+            float prev = dataClass->getSoilTolerance();
             dataClass->setSoilTolerance(soil_tol);
             sendPacket(STOL, soil_tol);
-            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance", soil_tol);
+            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/SoilTolerance", soil_tol, prev);
         }
         waitBox(false);
     };
@@ -755,13 +847,13 @@ void Display::soilMenuTimer(int *menu)
         if (selection == 0) {
             dataClass->setAbsorptionDelay(abs_delay*3600);
             sendPacket(AD, dataClass->getAbsorptionDelay());
-            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay",
-                                    dataClass->getAbsorptionDelay());
+            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay",
+                   dataClass->getAbsorptionDelay(), dataClass->getAbsorptionDelay());
         }
         if (selection == 1) {
             dataClass->setPumpDuration(pump_duration);
             sendPacket(PD, dataClass->getPumpDuration());
-            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", pump_duration);
+            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", pump_duration, dataClass->getPumpDuration());
         }
         waitBox(false);
         if (selection != 1) selection++;
@@ -957,8 +1049,8 @@ void Display::pumpCalibScreen(int *menu)
         else {
             flow_value = dataClass->getPumpFlow();
             waitBox(true);
-            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow",
-                                    flow_value);
+            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow",
+                   flow_value, dataClass->getPumpFlow());
             waitBox(false);
             selection = 0; *menu = -2;
         }
@@ -968,8 +1060,8 @@ void Display::pumpCalibScreen(int *menu)
         else {
             flow_value = dataClass->getPumpFlow();
             waitBox(true);
-            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow",
-                                    flow_value);
+            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Pump/PumpFlow",
+                   flow_value, dataClass->getPumpFlow());
             waitBox(false);
             selection = 0; *menu = -2;
         }
@@ -1003,19 +1095,19 @@ void Display::wateringCalibScreen(int *menu)
         waitBox(true);
         if (selection == 0) {
             dataClass->setSoilBehavior(SENSOR);
-            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Behavior", (float)SENSOR);
+            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Behavior", (float)SENSOR, (float)dataClass->getSoilBehavior());
             dataClass->getTargetSoil()==150 ? dataClass->setTargetSoil(50)
                                             : dataClass->setTargetSoil(dataClass->getTargetSoil());
             dataClass->setAbsorptionDelay(300);
-            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", 300.0f);
+            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", 300.0f, dataClass->getAbsorptionDelay());
             sendPacket(TS, dataClass->getTargetSoil());
         }
         if (selection == 1) {
             dataClass->setSoilBehavior(TIMER);
-            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Behavior", (float)TIMER);
+            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/Calibration/Behavior", (float)TIMER, (float)dataClass->getSoilBehavior());
             dataClass->setTargetSoil(150);
             dataClass->setAbsorptionDelay(3600);
-            firebase->aSyncSetFloat(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", 3600.0f);
+            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", 3600.0f, dataClass->getAbsorptionDelay());
             sendPacket(TS, dataClass->getTargetSoil());
         }
         waitBox(false);
