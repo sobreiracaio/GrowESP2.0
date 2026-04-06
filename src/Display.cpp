@@ -45,7 +45,7 @@ bool Display::recoverDisplay()
         display->init();
         display->setRotation(1);
         display->setSwapBytes(true);
-        ledcWrite(0, 255);
+        // Não acende tela aqui — brightness é controlado pelo ButtonIdle
         esp_task_wdt_reset();
         if (isDisplayHealthy()) {
             Serial.println("[DISPLAY] Recuperado com sucesso.");
@@ -419,7 +419,7 @@ uint16_t getGradientColor(float angle, uint16_t c1=RED, uint16_t c2=YELLOW, uint
 
 void Display::drawArcGauge(int x, int y, float value, float targetValue,
                             float ceiling_value, float tolerance,
-                            String label, String unit, int option)
+                            String label, String unit, int option, int decimals)
 {
     if (!gradientCached) {
         for (int a = 0; a < 270; a++) {
@@ -430,15 +430,19 @@ void Display::drawArcGauge(int x, int y, float value, float targetValue,
         gradientCached = true;
     }
 
-    float angle       = constrain(map(value,              0, ceiling_value, 0, 270), 0, 270);
-    float targetAngle1 = constrain(map(targetValue-tolerance, 0, ceiling_value, 0, 270), 1, 269);
-    float targetAngle2 = constrain(map(targetValue+tolerance, 0, ceiling_value, 0, 270), 1, 269);
+    // map() do Arduino usa long — usa fmap() float para valores decimais como VPD
+    auto fmap = [](float x, float in_min, float in_max, float out_min, float out_max) -> float {
+        return (x - in_min) * (out_max - out_min) / (in_max - in_min) + out_min;
+    };
+    float angle       = constrain(fmap(value,              0, ceiling_value, 0, 270), 0.0f, 270.0f);
+    float targetAngle1 = constrain(fmap(targetValue-tolerance, 0, ceiling_value, 0, 270), 1.0f, 269.0f);
+    float targetAngle2 = constrain(fmap(targetValue+tolerance, 0, ceiling_value, 0, 270), 1.0f, 269.0f);
 
     int radius = 43;
     if (value > ceiling_value) value = ceiling_value;
 
-    String fValue  = value      >= 100 ? String(int(value))      : String(value,  1);
-    String fTarget = targetValue >= 100 ? String(int(targetValue)) : String(targetValue, 1);
+    String fValue  = value      >= 100 ? String(int(value))      : String(value,  decimals);
+    String fTarget = targetValue >= 100 ? String(int(targetValue)) : String(targetValue, decimals);
 
     gaugeSprite->fillSprite(DARK_GREY);
     int cx = 55, cy = 55;
@@ -530,10 +534,11 @@ void Display::monitorMenu(int *menu)
                                   0, 0};
     int gauge_options[4] = {1, 2, 1, 2};
 
+    static const int gauge_decimals[4] = {1, 1, 2, 1};
     for (int i = 0; i < 4; i++)
         drawArcGauge(60+(distance*i), 95, gauge_values[i], gauge_Tvalues[i],
                      gauge_Cvalues[i], gauge_tolerances[i],
-                     gauge_labels[i], gauge_units[i], gauge_options[i]);
+                     gauge_labels[i], gauge_units[i], gauge_options[i], gauge_decimals[i]);
 
     display->setTextDatum(TL_DATUM);
     display->setTextColor(WHITE, DARK_GREY);

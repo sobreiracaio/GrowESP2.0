@@ -43,11 +43,17 @@ volatile bool _wakeRequest = false;
 
 void IRAM_ATTR onAnyButton()
 {
+    // Debounce mínimo na ISR — ignora pulsos muito rápidos (ruído elétrico)
+    static unsigned long lastISR = 0;
+    unsigned long now = millis();
+    if (now - lastISR < 50) return;
+    lastISR = now;
     _wakeRequest = true;
 }
 
 // Macro: aborta sendAndReceiveData se usuário pressionou botão
-#define CHECK_WAKE() do { if (_wakeRequest) return; } while(0)
+#define CHECK_WAKE()      do { if (_wakeRequest) return; } while(0)
+#define CHECK_WAKE_BOOL() do { if (_wakeRequest) return false; } while(0)
 
 // Flag que indica setup concluído — segura o menu até tudo estar pronto
 static bool _setupDone = false;
@@ -218,6 +224,7 @@ void sendDataStartUP()
 bool receiveFirebaseDataFast()
 {
     esp_task_wdt_reset();
+    CHECK_WAKE_BOOL();
 
     // ── 1. GET nó raiz do usuário (contém InsertedData, Version, Status) ──
     String userJson;
@@ -306,10 +313,13 @@ bool receiveFirebaseDataFast()
 
     // ── 2. GETs nos nós globais (/_Binary, /_Token, /_HasUpdate) ──────
     String val;
+    CHECK_WAKE_BOOL();
     if (firebase->dbGet("/_Binary",    val)) ota.setBinaryPath(val.c_str());
     esp_task_wdt_reset();
+    CHECK_WAKE_BOOL();
     if (firebase->dbGet("/_Token",     val)) ota.setToken(val.c_str());
     esp_task_wdt_reset();
+    CHECK_WAKE_BOOL();
     if (firebase->dbGet("/_HasUpdate", val)) ota.setHasUpdate(val == "true");
     esp_task_wdt_reset();
 
@@ -385,7 +395,7 @@ void sendAndReceiveData()
     // ── FASE RECEIVE — ativado por HasChange == true ─────────────────
     if (_rcvActive) {
         if (WiFi.status() != WL_CONNECTED) { _rcvActive = false; return; }
-        display->logoScreen("Atualizando dados...");
+        // Receive silencioso — sem logoScreen para não acender tela durante idle
         if (!receiveFirebaseDataFast()) {
             Serial.println("[HasChange] Fast receive falhou, usando receive lento...");
             receiveFirebaseData();
@@ -393,8 +403,13 @@ void sendAndReceiveData()
         esp_task_wdt_reset();
         firebase->dbSet(safeEmail + "/HasChange", String("false"));
         data_class.setHasChange("false");
+        data_class.saveToPrefs();
         _rcvActive = false;
-        display->drawBackGround();
+        // Só redesenha se tela estiver acesa
+        if (ledcRead(0) > 0) {
+            display->drawBackGround();
+            display->invalidateButtonScreen();
+        }
         return;
     }
 
@@ -483,7 +498,7 @@ void ButtonIdle()
             ledcWrite(0, brightness);
         }
 
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 4; i++) {
             if (button[i]->read()) break;
         }
 
@@ -493,7 +508,7 @@ void ButtonIdle()
             // Renovação de token só com tela apagada
             if (_setupDone && firebase && firebase->isReady()) firebase->loop();
 
-            // Retentativa de Firebase em background
+            // Retentativa de Firebase em background — init silencioso sem logoScreen
             if (_setupDone && !_firebaseReady && wifi.getStatus()) {
                 static unsigned long lastRetry = 0;
                 if (lastRetry == 0) lastRetry = millis();
@@ -501,10 +516,10 @@ void ButtonIdle()
                     lastRetry = millis();
                     Serial.println("[Firebase] Tentando conectar em background...");
                     if (hasInternet()) {
-                        firebase_healthy_startup();
-                        if (_firebaseReady) {
+                        bool ok = firebase->init() && firebase->isReady();
+                        if (ok) {
+                            _firebaseReady = true;
                             Serial.println("[Firebase] Conectado em background!");
-                            display->drawBackGround();
                         }
                     }
                 }
@@ -871,30 +886,6 @@ void loop()
     if (wifi.getStatus() && rtc.getStatus())
         getNow();
 
-    // Renovar token Firebase periodicamente — só após setup completo
-    if (_setupDone && firebase && firebase->isReady()) firebase->loop();
-
-    // ── Retentativa de Firebase em background ─────────────────────────────────
-    // Se o startup falhou por falta de internet, tenta novamente a cada 60s
-    // sem bloquear o loop — o equipamento opera normalmente com dados locais
-    if (_setupDone && !_firebaseReady && wifi.getStatus()) {
-        static unsigned long lastRetry = 0;
-        // Inicializa com millis() para evitar disparo imediato no primeiro frame
-        if (lastRetry == 0) lastRetry = millis();
-        if (millis() - lastRetry > 60000UL) {
-            lastRetry = millis();
-            Serial.println("[Firebase] Tentando conectar em background...");
-            if (hasInternet()) {
-                firebase_healthy_startup();
-                if (_firebaseReady) {
-                    Serial.println("[Firebase] Conectado em background!");
-                    display->drawBackGround();
-                }
-            }
-        }
-    }
-
-    sendActuatorsIfChanged();
     sendActuatorsIfChanged();
     ButtonIdle();
 
