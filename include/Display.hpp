@@ -60,7 +60,7 @@ class Display {
         void _setBoolIfChanged(const String& path, bool newVal, bool curVal);
         void drawArcGauge(int x, int y, float value, float targetValue,
                           float ceiling_value, float tolerance,
-                          String label, String unit, int option = 0);
+                          String label, String unit, int option = 0, int decimals = 1);
 
         // boxButton com limpeza automática de texto — sem rebarbas
         void boxButton(int x, int y, int w, int h, int color,
