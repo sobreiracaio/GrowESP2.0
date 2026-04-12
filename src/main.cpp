@@ -202,7 +202,7 @@ void sendDataStartUP()
         data_class.getTargetSoil(),
         data_class.getSoilTolerance(),
         data_class.getPumpDuration(),
-        data_class.getAbsorptionDelay(),
+        data_class.getAbsorptionDelay() / 60.0f,  // segundos → minutos (uint16_t max=65535s)
         lightValue,
         (float)data_class.getIsRunning()
     };

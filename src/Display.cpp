@@ -848,7 +848,7 @@ void Display::soilMenuSensor(int *menu)
         if (sel == 2) {
             float prev = dataClass->getAbsorptionDelay();
             dataClass->setAbsorptionDelay(abs_delay);
-            sendPacket(AD, abs_delay);
+            sendPacket(AD, abs_delay / 60.0f);  // segundos → minutos
             _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay", abs_delay, prev);
         }
         if (sel == 3) {
@@ -901,50 +901,69 @@ void Display::soilMenuSensor(int *menu)
 
 void Display::soilMenuTimer(int *menu)
 {
-    static int selection = 0;
-    float abs_delay    = dataClass->getAbsorptionDelay() / 3600.0f;
-    float pump_duration = dataClass->getPumpDuration();
+    static int   selection    = 0;
+    static float abs_delay    = -1;
+    static float pump_duration = -1;
+
+    // Inicializa na primeira entrada no menu — garante valores atuais do dataClass
+    if (abs_delay    < 0) abs_delay    = dataClass->getAbsorptionDelay() / 3600.0f;
+    if (pump_duration < 0) pump_duration = dataClass->getPumpDuration();
 
     if (selection < 0) selection = 1;
     if (selection > 1) selection = 0;
-    if (abs_delay > 24) abs_delay = 1;
-    if (abs_delay < 1)  abs_delay = 24;
-    if (pump_duration > 300) pump_duration = 0;
-    if (pump_duration < 0)   pump_duration = 300;
+    if (abs_delay > 24)    abs_delay    = 24;
+    if (abs_delay < 1)     abs_delay    = 1;
+    if (pump_duration > 300) pump_duration = 300;
+    if (pump_duration < 0)   pump_duration = 0;
 
     String labels[4] = {"-", "+", "Confirm.", "Voltar"};
     topScreen("Rega e Bomba");
     botScreen(labels);
 
     if (btn[0]->read() || btn[0]->held()) {
-        if (selection == 0) { abs_delay    -= 1; dataClass->setAbsorptionDelay(abs_delay*3600); }
-        if (selection == 1) { pump_duration -= 1; dataClass->setPumpDuration(pump_duration); }
+        if (selection == 0) abs_delay    -= 1;
+        if (selection == 1) pump_duration -= 1;
     }
     if (btn[1]->read() || btn[1]->held()) {
-        if (selection == 0) { abs_delay    += 1; dataClass->setAbsorptionDelay(abs_delay*3600); }
-        if (selection == 1) { pump_duration += 5; dataClass->setPumpDuration(pump_duration); }
+        if (selection == 0) abs_delay    += 1;
+        if (selection == 1) pump_duration += 5;
     }
     if (btn[2]->read()) {
         waitBox(true);
         if (selection == 0) {
-            dataClass->setAbsorptionDelay(abs_delay*3600);
-            sendPacket(AD, dataClass->getAbsorptionDelay());
+            float prev_ad = dataClass->getAbsorptionDelay();
+            dataClass->setAbsorptionDelay(abs_delay * 3600);
+            sendPacket(AD, dataClass->getAbsorptionDelay() / 60.0f);  // segundos → minutos
             _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/AbsorptionDelay",
-                   dataClass->getAbsorptionDelay(), dataClass->getAbsorptionDelay());
+                               dataClass->getAbsorptionDelay(), prev_ad);
         }
         if (selection == 1) {
+            float prev_pd = dataClass->getPumpDuration();
             dataClass->setPumpDuration(pump_duration);
             sendPacket(PD, dataClass->getPumpDuration());
-            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration", pump_duration, dataClass->getPumpDuration());
+            _setFloatIfChanged(safeEmail + "/InsertedData/Sensor/Soil/PumpDuration",
+                               pump_duration, prev_pd);
         }
         dataClass->saveToPrefs();
         waitBox(false);
         if (selection != 1) selection++;
-        else { selection = 0; *menu = -1; }
+        else {
+            selection     = 0;
+            abs_delay     = -1;
+            pump_duration = -1;
+            *menu = -1;
+            return; // evita renderizar frame com valores -1
+        }
     }
     if (btn[3]->read()) {
         if (selection != 0) selection--;
-        else { selection = 0; *menu = -1; }
+        else {
+            selection     = 0;
+            abs_delay     = -1;
+            pump_duration = -1;
+            *menu = -1;
+            return; // evita renderizar frame com valores -1
+        }
     }
 
     display->setTextColor(WHITE, DARK_GREY);
