@@ -8,6 +8,8 @@
 #include "OTA.hpp"
 #include "Light.hpp"
 #include "Serial.hpp"
+#include "soc/rtc_cntl_reg.h"  // Para desabilitar brownout detector
+
 
 
 
@@ -774,20 +776,38 @@ void heapMonitor()
 // ── setup ─────────────────────────────────────────────────────────────────────
 void setup()
 {
-    wdt_conf();
-    initClasses();
-    initModules();
+    // Desabilita o brownout detector do ESP32
+    // Evita resets em cascata durante queda de energia com capacitores
+    // O ESP32 pode reiniciar várias vezes se o brownout ficar ligado
+    WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
 
-    display->logoScreen("Inicializando sistemas de armazenamento...");
-    delay(1000);
+    // Aguarda tensão estabilizar após power-on ou queda de energia
+    // Sem esse delay o SPI do display pode inicializar com clock instável
+    delay(300);
+
+    // Serial e NVS PRIMEIRO — antes de qualquer outra coisa
+    // Evita travar silenciosamente após brownout com NVS corrompido
+    Serial.begin(115200);
+    delay(100);
 
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
+        Serial.println("[BOOT] NVS corrompido, apagando e reinicializando...");
         nvs_flash_erase();
         nvs_flash_init();
     }
 
-    Serial.begin(115200);
+    wdt_conf();
+    initClasses();
+
+    // Força delay antes do initDisplay para garantir que o ST7796
+    // terminou de inicializar após queda de energia (brownout)
+    // O controlador pode estar em estado indefinido sem esse delay
+    delay(200);
+    initModules();
+
+    display->logoScreen("Inicializando sistemas de armazenamento...");
+    delay(500);
 
     // ── Log da causa do último reset ──────────────────────────────────
     {
@@ -808,9 +828,8 @@ void setup()
         }
         Serial.printf("\n[RESET] Causa do ultimo reset: %s (codigo %d)\n", reasonStr, (int)reason);
 
-        // Exibe no display por 2s para ser visível mesmo sem Serial conectado
         display->logoScreen(String("Reset: ") + reasonStr);
-        delay(2000);
+        delay(1000);
     }
 
     display->logoScreen("Ajustando protocolos de comunicacao...");
@@ -903,12 +922,13 @@ void loop()
         if (gotPacket) {
             lastPacketTime = millis();
         } else if (lastPacketTime > 0 && millis() - lastPacketTime > 120000) {
-            // Sem pacote por 2 minutos — sensor pode estar travado
-            // Invalida leituras para não enviar dados velhos ao Firebase
-            Serial.println("[SENSOR] Sem pacotes ha 2min. Invalidando leituras.");
+            // Sem pacote por 2 minutos — Pico pode ter reiniciado
+            // Reenvia todos os parâmetros e invalida leituras velhas
+            Serial.println("[SENSOR] Sem pacotes ha 2min. Pico reiniciou? Reenviando parametros...");
+            sendDataStartUP();
             data_class.setTemp(-1);
             data_class.setHumid(-1);
-            lastPacketTime = millis(); // evita spam de log
+            lastPacketTime = millis();
         }
     }
 
