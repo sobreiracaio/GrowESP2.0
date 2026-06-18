@@ -27,3 +27,5 @@ devtty*.txt
 # OS
 .DS_Store
 Thumbs.db
+
+.PythonOTAapp
