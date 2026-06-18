@@ -4,9 +4,8 @@
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
 #include <ArduinoJson.h>
+#include "Secrets.h"   // DATABASE_URL e API_KEY ficam aqui, fora do controle de versão — ver Secrets.h.example
 
-#define DATABASE_URL "https://growstation-183df-default-rtdb.firebaseio.com"
-#define API_KEY      "AIzaSyBZOxkbUT3b9COdhCqNul3kNy6HEuSU5S4"
 #define AUTH_URL     "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key="
 #define REFRESH_URL  "https://securetoken.googleapis.com/v1/token?key="
 

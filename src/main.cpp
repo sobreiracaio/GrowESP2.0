@@ -476,7 +476,21 @@ void ButtonIdle()
         waking = true;
         for (int i = 0; i < 4; i++)
             button[i]->idleButton();
-        if (menu == -2) menu = -1;
+        // Se tela estava apagada — reseta para menu principal ANTES
+        // do fade-in começar, garantindo que o primeiro frame visível
+        // já é o menu -1 e não o menu anterior.
+        // Consome o estado dos botões para que o botão que acordou
+        // a tela não dispare navegação no menu.
+        if (brightness == 0) {
+            menu = -1;
+            display->drawBackGround();
+            display->invalidateButtonScreen();
+            // Drena qualquer leitura pendente — o botão que acordou
+            // não deve navegar, só acender
+            for (int i = 0; i < 4; i++) button[i]->read();
+        } else if (menu == -2) {
+            menu = -1;
+        }
     }
 
     bool idle = !waking &&
