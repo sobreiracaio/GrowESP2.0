@@ -1,0 +1,11 @@
+{
+  "token": "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",
+  "owner": "sobreiracaio",
+  "repo": "GrowESP2.0",
+  "environment": "esp32doit-devkit-v1",
+  "project_dir": "/home/caio/Documents/PlatformIO/Projects/Grow2.1",
+  "fb_email": "caiosobreira@gmail.com",
+  "fb_password": "123456",
+  "fb_apikey": "AIzaSyBZOxkbUT3b9COdhCqNul3kNy6HEuSU5S4",
+  "fb_db_url": "https://growstation-183df-default-rtdb.firebaseio.com"
+}
