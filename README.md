@@ -175,7 +175,7 @@ Two optimizations matter at scale:
 ## Display & menu system
 
 <p align="center">
-  <img src="docs/images/display_photoperiod.jpg" alt="Photo of the GrowStation main menu on the 3.5-inch TFT display: six icon tiles arranged in a 2x3 grid showing Rega (watering can), Monitorar (monitor), Calibrar (sliders), Fotoperíodo (sun/moon), Configurações (gear, currently selected with blue highlight), and Temperatura. Four translucent navigation buttons visible on the left of the orange enclosure. Clock reads 13:39." width="420">
+  <img src="docs/images/display_photoperiod.jpg" alt="Photo of the GrowStation main menu on the 3.5-inch TFT display: seven icon tiles arranged in a 2x3 grid showing Rega (watering can), Monitorar (monitor), Calibrar (sliders), Fotoperíodo (sun/moon), Configurações (gear, currently selected with blue highlight), and Temperatura. Four translucent navigation buttons visible on the left of the orange enclosure. Clock reads 13:39." width="420">
   <br>
   <em>Main menu — six navigation tiles, differential redraw keeps selection changes flicker-free</em>
 </p>
